@@ -2,13 +2,10 @@
   "name": "xor",
   "version": "0.1.0",
   "bin": {
-    "xor": "bin/xor.js"
+    "xor": "main/xor.js"
   },
   "scripts": {
-    "build": "tsc",
-    "watch": "tsc -w",
-    "test": "jest",
-    "cdk": "cdk"
+    "deploy": "tsc -p ./app/tsconfig.json && cp app/package.json dist && npm install --production --prefix ./dist && cdk deploy"
   },
   "devDependencies": {
     "@types/jest": "^27.5.2",
