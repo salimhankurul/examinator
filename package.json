@@ -5,6 +5,7 @@
     "xor": "main/xor.js"
   },
   "scripts": {
+    "build": "tsc -p ./app/tsconfig.json && cp app/package.json dist && npm install --production --prefix ./dist",
     "deploy": "tsc -p ./app/tsconfig.json && cp app/package.json dist && npm install --production --prefix ./dist && cdk deploy"
   },
   "devDependencies": {
