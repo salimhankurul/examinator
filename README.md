@@ -1,1 +1,3 @@
-# Serverless Online exam Platform Backend - Finishing Project
+# Finishing Project
+
+Serverless Online exam Platform Backend
