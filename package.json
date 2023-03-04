@@ -5,22 +5,26 @@
     "xor": "main/xor.js"
   },
   "scripts": {
+    "install": "npm install --prefix ./app",
     "build": "tsc -p ./app/tsconfig.json && cp app/package.json dist && npm install --production --prefix ./dist",
-    "deploy": "tsc -p ./app/tsconfig.json && cp app/package.json dist && npm install --production --prefix ./dist && cdk deploy"
+    "deploy": "tsc -p ./app/tsconfig.json && cp app/package.json dist && npm install --production --prefix ./dist && cdk deploy --profile bahadir --require-approval never"
   },
   "devDependencies": {
-    "@types/jest": "^27.5.2",
+    "@types/jest": "27.5.2",
     "@types/node": "10.17.27",
     "@types/prettier": "2.6.0",
-    "jest": "^27.5.1",
-    "ts-jest": "^27.1.4",
+    "@types/aws-lambda": "8.10.110",
+    "jest": "27.5.1",
+    "ts-jest": "27.1.4",
     "aws-cdk": "2.43.1",
-    "ts-node": "^10.9.1",
-    "typescript": "~3.9.7"
+    "ts-node": "10.9.1",
+    "typescript": "4.6.3"
   },
   "dependencies": {
+    "@aws-cdk/aws-apigatewayv2-alpha": "^2.64.0-alpha.0",
+    "@aws-cdk/aws-apigatewayv2-integrations-alpha": "^2.64.0-alpha.0",
     "aws-cdk-lib": "2.43.1",
-    "constructs": "^10.0.0",
-    "source-map-support": "^0.5.21"
+    "constructs": "10.0.0",
+    "source-map-support": "0.5.21"
   }
 }

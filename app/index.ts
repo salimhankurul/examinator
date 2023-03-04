@@ -1,73 +1,30 @@
-import axios from 'axios'
-import { parse } from "node-html-parser";
+import crypto from 'crypto'
+import { DynamoDBClient } from '@aws-sdk/client-dynamodb'
+import { DynamoDBDocumentClient, ScanCommand, PutCommand, GetCommand, DeleteCommand } from '@aws-sdk/lib-dynamodb'
+import { decode, JwtPayload, sign, verify } from 'jsonwebtoken'
+import { APIGatewayProxyEventV2, Context } from 'aws-lambda'
+import { loginInput, registerInput } from './models'
+import { createResponse } from './utils'
+import { CustomError } from './custom-error'
+import { User, userType as userTypeSchema} from './types'
+import { validateToken } from './auth'
 
-const getUSD_milliyet = async (): Promise<number> => {
-  try {
-    const data = await axios.get('https://uzmanpara.milliyet.com.tr/dolar-kuru/')
-    const root = parse(data.data)
-    const price = root.querySelector('#usd_header_son_data')?.textContent
+const { ACCESS_TOKEN_SECRET } = process.env
 
-    return parseFloat(price?.replace(',', '.') || '0')
-  } catch (error) {
-    console.error('USD error', error)
-    return 0
-  }
-}
+export const test = async (event: APIGatewayProxyEventV2, context: Context) => {
+    try {    
+        const input = JSON.parse(event.body || '{}')
 
-const getUSD_bloomberght = async (): Promise<number> => {
-  try {
-    const data = await axios.get('https://www.bloomberght.com/doviz/dolar')
-    const root = parse(data.data)
-    const price = root.querySelector('span.LastPrice')?.textContent
+        const _token = event.headers['_token']
 
-    return parseFloat(price?.replace(',', '.') || '0')
-  } catch (error) {
-    console.error('USD error', error)
-    return 0
-  }
-}
+        const auth = validateToken(_token, ACCESS_TOKEN_SECRET)
 
-const getBUSD = async (): Promise<number> => {
-  try {
-    const data = await axios.get('https://www.binance.com/api/v3/depth?symbol=BUSDTRY&limit=5')
-    const price = data.data.asks[0][0]
+        if (auth.error) {
+          throw new CustomError({ statusCode: 400, message: 'There has been a problem while verifying your access token.',  addons: { tokenError: auth.error } })
+        }
 
-    return parseFloat(price?.replace(',', '.') || '0')
-  } catch (error) {
-    console.error('BUSD error', error)
-    return 0
-  }
-}
-
-const getDifferece = (a: number, b: number) => {
-  return Math.abs(a - b) / ((a + b) / 2) * 100
-}
-
-export const main = async (event: any, context: any) => {
-  try {
-    const busd = await getBUSD()
-    const usd_milliyet = await getUSD_milliyet()
-    const usd_bloomberght = await getUSD_bloomberght()
-    const diff1 = getDifferece(busd, usd_milliyet)
-    const diff2 = getDifferece(busd, usd_bloomberght)
-
-    console.log('BUSD', busd)
-    console.log('USD_milliyet',usd_milliyet, diff1)
-    console.log('USD_bloomberght',usd_bloomberght, diff2)
-    
-    let res = { alarm: false }
-    if (diff1 >= 2.0 || diff2 >= 2.0) res.alarm = true
-
-    return {
-      statusCode: 202,
-      headers: {},
-      body: JSON.stringify(res),
-    }
-  } catch (err) {
-    return {
-      statusCode: 200,
-      headers: {},
-      body: JSON.stringify({ err: err.message }),
+        return createResponse(200, { auth })
+    } catch (error) {
+      return error instanceof CustomError ? error.response : new CustomError({ statusCode: 400, message: 'Generic Examinator Error',  addons: { error: error.message } }).response
     }
   }
-}
