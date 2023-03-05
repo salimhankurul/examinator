@@ -8,7 +8,22 @@ export const user = z.object({
     type: userType,
     id: z.string(),
 })
-export type User = z.infer<typeof user>
+export type UserMetaData = z.infer<typeof user>
+
+export const tokenMetaData = z.object({
+    userType: userType,
+    userId: z.string(),
+    IP: z.string(),
+    iat: z.number(),
+    exp: z.number(),
+})
+export type TokenMetaData = z.infer<typeof tokenMetaData>
+
+export const validateTokenResponse = z.object({
+    tokenMetaData,
+    error: z.string(),
+}).partial()
+export type ValidateTokenResponse = z.infer<typeof validateTokenResponse>
 
 export const verifyRes = z.object({
     email: z.string().email(),

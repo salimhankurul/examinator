@@ -27,7 +27,7 @@ export class XorStack extends cdk.Stack {
 
     const SessionTable = new Table(this, 'SessionTable', {
       partitionKey: {
-        name: 'sessionId',
+        name: 'userId',
         type: AttributeType.STRING,
       },
       billingMode: BillingMode.PAY_PER_REQUEST,
@@ -45,22 +45,13 @@ export class XorStack extends cdk.Stack {
         new PolicyStatement({
           effect: Effect.ALLOW,
           resources: ['*'],
-          actions: [
-            'dynamodb:*',
-            'logs:*',
-            'events:*',
-            'lambda:*',
-            's3:*',
-            'cloudwatch:*',
-            'iam:*',
-            'cloudfront:*'
-          ],
+          actions: ['dynamodb:*', 'logs:*', 'events:*', 'lambda:*', 's3:*', 'cloudwatch:*', 'iam:*', 'cloudfront:*'],
         }),
       )
     }
-    
+
     const testLambda = new Function(this, 'testLambda', {
-      runtime: Runtime.NODEJS_16_X, // So we can use async in widget.js
+      runtime: Runtime.NODEJS_16_X,
       code: Code.fromAsset('dist'),
       handler: 'index.test',
       architecture: Architecture.ARM_64,
@@ -68,45 +59,58 @@ export class XorStack extends cdk.Stack {
       role,
       environment: {
         ACCESS_TOKEN_SECRET: 'ACCESS_TOKEN_SECRET',
-      }
-    })
-
-    const loginLambda = new Function(this, 'loginLambda', {
-      runtime: Runtime.NODEJS_16_X, // So we can use async in widget.js
-      code: Code.fromAsset('dist'),
-      handler: 'auth.login',
-      architecture: Architecture.ARM_64,
-      timeout: Duration.minutes(5),
-      role,
-      environment: {
-        ACCESS_TOKEN_SECRET: 'ACCESS_TOKEN_SECRET',
-        REFRESH_TOKEN_SECRET: 'REFRESH_TOKEN_SECRET',
-      }
+      },
     })
 
     const registerLambda = new Function(this, 'registerLambda', {
-      runtime: Runtime.NODEJS_16_X, // So we can use async in widget.js
+      runtime: Runtime.NODEJS_16_X,
       code: Code.fromAsset('dist'),
-      handler: 'auth.register',
+      handler: 'Modules/authentication.register',
       architecture: Architecture.ARM_64,
-      timeout: Duration.minutes(5),
+      timeout: Duration.seconds(45),
       role,
       environment: {
         ACCESS_TOKEN_SECRET: 'ACCESS_TOKEN_SECRET',
         REFRESH_TOKEN_SECRET: 'REFRESH_TOKEN_SECRET',
-      }
+      },
+    })
+
+    const signInLambda = new Function(this, 'signInLambda', {
+      runtime: Runtime.NODEJS_16_X,
+      code: Code.fromAsset('dist'),
+      handler: 'Modules/authentication.signIn',
+      architecture: Architecture.ARM_64,
+      timeout: Duration.seconds(45),
+      role,
+      environment: {
+        ACCESS_TOKEN_SECRET: 'ACCESS_TOKEN_SECRET',
+        REFRESH_TOKEN_SECRET: 'REFRESH_TOKEN_SECRET',
+      },
+    })
+
+    const signOutLambda = new Function(this, 'signOutLambda', {
+      runtime: Runtime.NODEJS_16_X,
+      code: Code.fromAsset('dist'),
+      handler: 'Modules/authentication.signOut',
+      architecture: Architecture.ARM_64,
+      timeout: Duration.seconds(45),
+      role,
+      environment: {
+        ACCESS_TOKEN_SECRET: 'ACCESS_TOKEN_SECRET',
+      },
     })
 
     const refreshLambda = new Function(this, 'refreshLambda', {
-      runtime: Runtime.NODEJS_16_X, // So we can use async in widget.js
+      runtime: Runtime.NODEJS_16_X,
       code: Code.fromAsset('dist'),
-      handler: 'auth.refreshToken',
+      handler: 'Modules/authorization.refreshToken',
       architecture: Architecture.ARM_64,
-      timeout: Duration.minutes(5),
+      timeout: Duration.seconds(45),
       role,
       environment: {
+        ACCESS_TOKEN_SECRET: 'ACCESS_TOKEN_SECRET',
         REFRESH_TOKEN_SECRET: 'REFRESH_TOKEN_SECRET',
-      }
+      },
     })
 
     const httpApi = new HttpApi(this, 'XorServiceHttpAPI', {
@@ -114,10 +118,10 @@ export class XorStack extends cdk.Stack {
       createDefaultStage: true,
     })
 
-    new HttpRoute(this, 'XorAPIRouteLogin' + HttpMethod.POST, {
+    new HttpRoute(this, 'XorAPIRouteSignIn' + HttpMethod.POST, {
       httpApi,
-      routeKey: HttpRouteKey.with('/LOGIN', HttpMethod.POST),
-      integration: new HttpLambdaIntegration('loginLambdanegration', loginLambda, {
+      routeKey: HttpRouteKey.with('/SIGNIN', HttpMethod.POST),
+      integration: new HttpLambdaIntegration('signInLambdanegration', signInLambda, {
         payloadFormatVersion: PayloadFormatVersion.custom('2.0'),
       }),
     })
@@ -138,6 +142,14 @@ export class XorStack extends cdk.Stack {
       }),
     })
 
+    new HttpRoute(this, 'XorAPIRouteSignOut' + HttpMethod.POST, {
+      httpApi,
+      routeKey: HttpRouteKey.with('/SIGNOUT', HttpMethod.POST),
+      integration: new HttpLambdaIntegration('signOutLambdaInegration', signOutLambda, {
+        payloadFormatVersion: PayloadFormatVersion.custom('2.0'),
+      }),
+    })
+
     new HttpRoute(this, 'XorAPIRouteTest' + HttpMethod.POST, {
       httpApi,
       routeKey: HttpRouteKey.with('/TEST', HttpMethod.POST),
@@ -145,7 +157,6 @@ export class XorStack extends cdk.Stack {
         payloadFormatVersion: PayloadFormatVersion.custom('2.0'),
       }),
     })
-
   }
 }
 

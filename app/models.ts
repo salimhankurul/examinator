@@ -7,7 +7,11 @@ export const registerInput = z.object({
   userType,
 })
 
-export const loginInput = z.object({
+export const signInInput = z.object({
   email: z.string().email(),
   password: z.string(),
+})
+
+export const signOutInput = z.object({
+  userId: z.string(),
 })
