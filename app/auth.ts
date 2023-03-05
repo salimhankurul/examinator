@@ -11,7 +11,7 @@ import { User, userType as userTypeSchema, VerifyResponse } from './types'
 const { REFRESH_TOKEN_SECRET, ACCESS_TOKEN_SECRET } = process.env
 const ACCESS_TOKEN_TTL = 300
 const REFRESH_TOKEN_TTL = 600
-const TOKEN_TABLE = 'TokenTable'
+const SESSION_TABLE = 'SessionTable'
 const USER_TABLE = 'UserTable'
 
 const client = new DynamoDBClient({})

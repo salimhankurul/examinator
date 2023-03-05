@@ -25,15 +25,15 @@ export class XorStack extends cdk.Stack {
       tableName: 'UserTable',
     })
 
-    const TokenTable = new Table(this, 'TokenTable', {
+    const SessionTable = new Table(this, 'SessionTable', {
       partitionKey: {
-        name: 'userId',
+        name: 'sessionId',
         type: AttributeType.STRING,
       },
       billingMode: BillingMode.PAY_PER_REQUEST,
       stream: StreamViewType.NEW_IMAGE,
       timeToLiveAttribute: 'expiresAt',
-      tableName: 'TokenTable',
+      tableName: 'SessionTable',
     })
 
     const role = new Role(this, 'COSLambdaRole', {
@@ -45,144 +45,20 @@ export class XorStack extends cdk.Stack {
         new PolicyStatement({
           effect: Effect.ALLOW,
           resources: ['*'],
-          actions: ['xray:PutTraceSegments', 'xray:PutTelemetryRecords'],
-        }),
-      )
-
-      role.addToPolicy(
-        new PolicyStatement({
-          effect: Effect.ALLOW,
-          resources: ['*'],
-          actions: ['ec2:*'],
-        }),
-      )
-
-      role.addToPolicy(
-        new PolicyStatement({
-          effect: Effect.ALLOW,
-          resources: ['*'],
-          actions: ['dynamodb:*'],
-        }),
-      )
-
-      role.addToPolicy(
-        new PolicyStatement({
-          effect: Effect.ALLOW,
-          resources: ['*'],
-          actions: ['logs:*'],
-        }),
-      )
-
-      role.addToPolicy(
-        new PolicyStatement({
-          effect: Effect.DENY,
-          resources: ['*'],
-          actions: ['logs:CreateLogGroup', 'logs:CreateLogStream', 'logs:PutLogEvents'],
-        }),
-      )
-
-      role.addToPolicy(
-        new PolicyStatement({
-          effect: Effect.ALLOW,
-          resources: ['*'],
-          actions: ['events:*'],
-        }),
-      )
-
-      role.addToPolicy(
-        new PolicyStatement({
-          effect: Effect.ALLOW,
-          resources: ['*'],
-          actions: ['lambda:*'],
-        }),
-      )
-
-      role.addToPolicy(
-        new PolicyStatement({
-          effect: Effect.ALLOW,
-          resources: ['*'],
-          actions: ['s3:*'],
-        }),
-      )
-
-      role.addToPolicy(
-        new PolicyStatement({
-          effect: Effect.ALLOW,
-          resources: ['*'],
-          actions: ['cloudwatch:*'],
-        }),
-      )
-
-      role.addToPolicy(
-        new PolicyStatement({
-          effect: Effect.ALLOW,
-          resources: ['*'],
-          actions: ['sns:*'],
-        }),
-      )
-
-      role.addToPolicy(
-        new PolicyStatement({
-          effect: Effect.ALLOW,
-          resources: ['*'],
-          actions: ['sts:*'],
-        }),
-      )
-
-      role.addToPolicy(
-        new PolicyStatement({
-          effect: Effect.ALLOW,
-          resources: ['*'],
-          actions: ['secretsmanager:GetSecretValue'],
-          conditions: {
-            StringEquals: {
-              'secretsmanager:ResourceTag/ServiceName': 'COSService',
-            },
-          },
-        }),
-      )
-
-      role.addToPolicy(
-        new PolicyStatement({
-          effect: Effect.ALLOW,
-          resources: ['*'],
-          actions: ['kinesis:*'],
-        }),
-      )
-
-      role.addToPolicy(
-        new PolicyStatement({
-          effect: Effect.ALLOW,
-          resources: ['*'],
-          actions: ['states:*'],
-        }),
-      )
-
-      role.addToPolicy(
-        new PolicyStatement({
-          effect: Effect.ALLOW,
-          resources: ['*'],
-          actions: ['iam:*'],
-        }),
-      )
-
-      role.addToPolicy(
-        new PolicyStatement({
-          effect: Effect.ALLOW,
-          resources: ['*'],
-          actions: ['cloudfront:*'],
-        }),
-      )
-
-      role.addToPolicy(
-        new PolicyStatement({
-          effect: Effect.DENY,
-          resources: ['*'],
-          actions: ['iam:CreateServiceLinkedRole'],
+          actions: [
+            'dynamodb:*',
+            'logs:*',
+            'events:*',
+            'lambda:*',
+            's3:*',
+            'cloudwatch:*',
+            'iam:*',
+            'cloudfront:*'
+          ],
         }),
       )
     }
-
+    
     const testLambda = new Function(this, 'testLambda', {
       runtime: Runtime.NODEJS_16_X, // So we can use async in widget.js
       code: Code.fromAsset('dist'),
@@ -233,8 +109,8 @@ export class XorStack extends cdk.Stack {
       }
     })
 
-    const httpApi = new HttpApi(this, 'COSServiceHttpAPI', {
-      description: 'Cloud Objects service Http Api',
+    const httpApi = new HttpApi(this, 'XorServiceHttpAPI', {
+      description: 'Service Http Api',
       createDefaultStage: true,
     })
 

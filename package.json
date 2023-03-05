@@ -7,7 +7,8 @@
   "scripts": {
     "install": "npm install --prefix ./app",
     "build": "tsc -p ./app/tsconfig.json && cp app/package.json dist && npm install --production --prefix ./dist",
-    "deploy": "tsc -p ./app/tsconfig.json && cp app/package.json dist && npm install --production --prefix ./dist && cdk deploy --profile bahadir --require-approval never"
+    "deploy": "tsc -p ./app/tsconfig.json && cp app/package.json dist && npm install --production --prefix ./dist && cdk deploy --profile examinator --require-approval never",
+    "bootstrap": "cdk bootstrap --profile examinator"
   },
   "devDependencies": {
     "@types/jest": "27.5.2",
