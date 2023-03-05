@@ -9,3 +9,4 @@ app/node_modules
 cdk.out
 .DS_Store
 test
+temp

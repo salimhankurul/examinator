@@ -22,7 +22,7 @@ const encodePassword = (password: string) => crypto.createHash('sha3-512').updat
 // *******************************
 // *******************************
 
-export const register = async (event: APIGatewayProxyEventV2, context: Context): Promise<ExaminatorResponse> => {
+export const signUp = async (event: APIGatewayProxyEventV2, context: Context): Promise<ExaminatorResponse> => {
   try {
     const _input = registerInput.safeParse(JSON.parse(event.body || '{}'))
 
@@ -116,7 +116,7 @@ export const signOut = async (event: APIGatewayProxyEventV2, context: Context): 
 
     const _token = event.headers['_token']
 
-    const res = await terminateSession(_input.data.userId, _token)
+    const res = await terminateSession(_token, _input.data.userId)
 
     return new Response({ statusCode: 200, body: { success: true, res } }).response
   } catch (error) {

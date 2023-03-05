@@ -5,10 +5,9 @@
     "xor": "main/xor.js"
   },
   "scripts": {
-    "install": "npm install --prefix ./app",
-    "build": "tsc -p ./app/tsconfig.json && cp app/package.json dist && npm install --production --prefix ./dist",
-    "deploy": "tsc -p ./app/tsconfig.json && cp app/package.json dist && npm install --production --prefix ./dist && cdk deploy --profile examinator --require-approval never",
-    "bootstrap": "cdk bootstrap --profile examinator"
+    "build": "tsc -p ./app/tsconfig.json",
+    "deploy": "npm run build && cdk deploy --profile examinator --require-approval never",
+    "create-layer": "rm -rf temp/ && mkdir -p temp/nodejs && cp app-package.json ./temp/nodejs/package.json && npm install --silent --prod --prefix ./temp/nodejs && cd temp && zip -r ./layer.zip nodejs"
   },
   "devDependencies": {
     "@types/jest": "27.5.2",
@@ -26,6 +25,12 @@
     "@aws-cdk/aws-apigatewayv2-integrations-alpha": "^2.64.0-alpha.0",
     "aws-cdk-lib": "2.43.1",
     "constructs": "10.0.0",
-    "source-map-support": "0.5.21"
+    "source-map-support": "0.5.21",
+    "@aws-sdk/client-dynamodb": "3.154.0",
+    "@aws-sdk/lib-dynamodb": "3.154.0",
+    "axios": "0.27.2",
+    "jsonwebtoken": "8.5.1",
+    "uuid": "9.0.0",
+    "zod": "3.20.6"
   }
 }

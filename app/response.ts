@@ -26,8 +26,8 @@ export class Response<T = unknown> extends Error {
     const { message, statusCode, addons, body } = errorArguments
     this.statusCode = statusCode
     
-    this.addons = addons
-    this.message = message
+    this.addons = addons || {} as T
+    this.message = message || ''
     
     this.body = body
     Object.setPrototypeOf(this, Response.prototype)

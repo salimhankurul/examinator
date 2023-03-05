@@ -1,6 +1,6 @@
 import crypto from 'crypto'
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb'
-import { DynamoDBDocumentClient, ScanCommand, PutCommand, GetCommand, DeleteCommand } from '@aws-sdk/lib-dynamodb'
+import { DynamoDBDocumentClient, ScanCommand, PutCommand, GetCommand, DeleteCommand, BatchWriteCommand } from '@aws-sdk/lib-dynamodb'
 import { sign, verify as JWTVerify } from 'jsonwebtoken'
 import { APIGatewayProxyEventV2, Context } from 'aws-lambda'
 import { Response, ExaminatorResponse } from '../response'
@@ -66,7 +66,32 @@ export const createSession = async ({ userId, userType }: any, IP: string) => {
   return { accessToken, refreshToken }
 }
 
-export const validateSession = async (_token: string, secret: string): Promise<TokenMetaData> => {
+export const terminateSession = async (_token: string, targetUserId: string): Promise<void> => {
+  const { tokenMetaData, error } = validateToken(_token, ACCESS_TOKEN_SECRET)
+
+ if (error) {
+   throw new Response({ statusCode: 403, message: 'There has been a problem while authorizing your token.', addons: { tokenError: error } })
+ }
+
+ if (tokenMetaData.userId !== targetUserId && tokenMetaData.userType !== 'admin') {
+   throw new Response({ statusCode: 403, message: 'You are not authorized to terminate this session.' })
+ }
+
+ const dynamoReq = await dynamo.send(
+   new DeleteCommand({
+     TableName: SESSION_TABLE,
+     Key: {
+       userId: targetUserId,
+     },
+   }),
+ )
+
+ if (!dynamoReq.$metadata || dynamoReq.$metadata.httpStatusCode !== 200) {
+   throw new Response({ statusCode: 404, message: 'There has been a problem while terminating your session.' })
+ }
+}
+
+export const validateSessionToken = async (_token: string, secret: string): Promise<TokenMetaData> => {
   const { tokenMetaData, error } = validateToken(_token, secret)
 
   if (error) {
@@ -89,31 +114,6 @@ export const validateSession = async (_token: string, secret: string): Promise<T
   return tokenMetaData
 }
 
-export const terminateSession = async (_token: string, targetUserId: string): Promise<any> => {
-  console.log('terminateSession', _token, targetUserId)
-  const { tokenMetaData, error } = validateToken(_token, ACCESS_TOKEN_SECRET)
-
-  if (error) {
-    throw new Response({ statusCode: 403, message: 'There has been a problem while authorizing your token.', addons: { tokenError: error } })
-  }
-
-  if (tokenMetaData.userId !== targetUserId && tokenMetaData.userType !== 'admin') {
-    throw new Response({ statusCode: 403, message: 'You are not authorized to terminate this session.' })
-  }
-
-  const dynamoReq = await dynamo.send(
-    new DeleteCommand({
-      TableName: SESSION_TABLE,
-      Key: {
-        userId: targetUserId,
-      },
-    }),
-  )
-
-  return dynamoReq
-}
-
-
 // *******************************
 // *******************************
 // ***** LAMBDA HANDLERS  ********
@@ -126,7 +126,7 @@ export const refreshToken = async (event: APIGatewayProxyEventV2, context: Conte
     const _token = event.headers['_token'] // refresh token
     const reqIP = event.requestContext.http.sourceIp
 
-    const tokenMetaData = await validateSession(_token, REFRESH_TOKEN_SECRET)
+    const tokenMetaData = await validateSessionToken(_token, REFRESH_TOKEN_SECRET)
     
     if (tokenMetaData.IP !== reqIP) {
       throw new Response({ statusCode: 403, message: 'Token is not created with same IP' })

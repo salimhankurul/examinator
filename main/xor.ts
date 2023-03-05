@@ -1,10 +1,12 @@
 #!/usr/bin/env node
 import 'source-map-support/register'
+import * as path from 'path'
+import * as crypto from 'crypto'
 import * as cdk from 'aws-cdk-lib'
 import { Construct } from 'constructs'
 import { RestApi, LambdaIntegration } from 'aws-cdk-lib/aws-apigateway'
 import { Duration } from 'aws-cdk-lib'
-import { Function, Architecture, Runtime, Code } from 'aws-cdk-lib/aws-lambda'
+import { Function, Architecture, Runtime, Code, LayerVersion } from 'aws-cdk-lib/aws-lambda'
 import { AttributeType, BillingMode, StreamViewType, Table } from 'aws-cdk-lib/aws-dynamodb'
 import { Effect, PolicyStatement, Role, ServicePrincipal } from 'aws-cdk-lib/aws-iam'
 import { DomainName, HttpApi, HttpMethod, HttpRoute, HttpRouteKey, PayloadFormatVersion } from '@aws-cdk/aws-apigatewayv2-alpha'
@@ -14,6 +16,27 @@ import { Certificate } from 'aws-cdk-lib/aws-certificatemanager'
 export class XorStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
     super(scope, id, props)
+
+    // *******************************
+    // *******************************
+    // ************ LAYER  ***********
+    // *******************************
+    // *******************************
+
+    const layer = new LayerVersion(this, 'XorLayer', {
+      code: Code.fromAsset(path.join('temp', 'layer.zip'), {
+        assetHash: getLayerHash('../app-package.json'),
+      }),
+      compatibleRuntimes: [Runtime.NODEJS_16_X],
+      license: 'MIT',
+      description: 'Node Modules',
+    })
+
+    // *******************************
+    // *******************************
+    // ********* DYNAMODB  ***********
+    // *******************************
+    // *******************************
 
     const UserTable = new Table(this, 'UserTable', {
       partitionKey: {
@@ -36,6 +59,12 @@ export class XorStack extends cdk.Stack {
       tableName: 'SessionTable',
     })
 
+    // *******************************
+    // *******************************
+    // ************ ROLES  ***********
+    // *******************************
+    // *******************************
+
     const role = new Role(this, 'COSLambdaRole', {
       assumedBy: new ServicePrincipal('lambda.amazonaws.com'),
     })
@@ -50,6 +79,12 @@ export class XorStack extends cdk.Stack {
       )
     }
 
+    // *******************************
+    // *******************************
+    // ***** LAMBDA HANDLERS  ********
+    // *******************************
+    // *******************************
+
     const testLambda = new Function(this, 'testLambda', {
       runtime: Runtime.NODEJS_16_X,
       code: Code.fromAsset('dist'),
@@ -57,18 +92,20 @@ export class XorStack extends cdk.Stack {
       architecture: Architecture.ARM_64,
       timeout: Duration.minutes(5),
       role,
+      layers: [layer],
       environment: {
         ACCESS_TOKEN_SECRET: 'ACCESS_TOKEN_SECRET',
       },
     })
 
-    const registerLambda = new Function(this, 'registerLambda', {
+    const signUpLambda = new Function(this, 'signUpLambda', {
       runtime: Runtime.NODEJS_16_X,
       code: Code.fromAsset('dist'),
-      handler: 'Modules/authentication.register',
+      handler: 'Modules/authentication.signUp',
       architecture: Architecture.ARM_64,
       timeout: Duration.seconds(45),
       role,
+      layers: [layer],
       environment: {
         ACCESS_TOKEN_SECRET: 'ACCESS_TOKEN_SECRET',
         REFRESH_TOKEN_SECRET: 'REFRESH_TOKEN_SECRET',
@@ -82,6 +119,7 @@ export class XorStack extends cdk.Stack {
       architecture: Architecture.ARM_64,
       timeout: Duration.seconds(45),
       role,
+      layers: [layer],
       environment: {
         ACCESS_TOKEN_SECRET: 'ACCESS_TOKEN_SECRET',
         REFRESH_TOKEN_SECRET: 'REFRESH_TOKEN_SECRET',
@@ -95,6 +133,7 @@ export class XorStack extends cdk.Stack {
       architecture: Architecture.ARM_64,
       timeout: Duration.seconds(45),
       role,
+      layers: [layer],
       environment: {
         ACCESS_TOKEN_SECRET: 'ACCESS_TOKEN_SECRET',
       },
@@ -107,16 +146,29 @@ export class XorStack extends cdk.Stack {
       architecture: Architecture.ARM_64,
       timeout: Duration.seconds(45),
       role,
+      layers: [layer],
       environment: {
         ACCESS_TOKEN_SECRET: 'ACCESS_TOKEN_SECRET',
         REFRESH_TOKEN_SECRET: 'REFRESH_TOKEN_SECRET',
       },
     })
 
+    // *******************************
+    // *******************************
+    // ************* HTTP  ***********
+    // *******************************
+    // *******************************
+
     const httpApi = new HttpApi(this, 'XorServiceHttpAPI', {
       description: 'Service Http Api',
       createDefaultStage: true,
     })
+
+    // *******************************
+    // *******************************
+    // ********* HTTP ROUTES  ********
+    // *******************************
+    // *******************************
 
     new HttpRoute(this, 'XorAPIRouteSignIn' + HttpMethod.POST, {
       httpApi,
@@ -126,10 +178,10 @@ export class XorStack extends cdk.Stack {
       }),
     })
 
-    new HttpRoute(this, 'XorAPIRouteRegister' + HttpMethod.POST, {
+    new HttpRoute(this, 'XorAPIRoutesignUp' + HttpMethod.POST, {
       httpApi,
-      routeKey: HttpRouteKey.with('/REGISTER', HttpMethod.POST),
-      integration: new HttpLambdaIntegration('registerLambdaInegration', registerLambda, {
+      routeKey: HttpRouteKey.with('/SIGNUP', HttpMethod.POST),
+      integration: new HttpLambdaIntegration('signUpLambdaInegration', signUpLambda, {
         payloadFormatVersion: PayloadFormatVersion.custom('2.0'),
       }),
     })
@@ -158,6 +210,13 @@ export class XorStack extends cdk.Stack {
       }),
     })
   }
+}
+
+function getLayerHash(packagePath: string): string {
+  const packageJson = require(require.resolve(path.join(packagePath)))
+  if (!packageJson) throw new Error('Package json can not found!')
+
+  return crypto.createHmac('sha256', '').update(JSON.stringify(packageJson)).digest('hex')
 }
 
 const app = new cdk.App()
