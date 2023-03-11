@@ -118,6 +118,11 @@ export const signIn = async (event: APIGatewayProxyEventV2, context: Context): P
 
 export const signOut = async (event: APIGatewayProxyEventV2, context: Context): Promise<ExaminatorResponse> => {
   try {
+    
+    if (event.requestContext.http.method === 'OPTIONS') {
+      return new Response({ statusCode: 200, body: {} }).response
+    }
+
     const _input = signOutInput.safeParse(JSON.parse(event.body || '{}'))
 
     if (_input.success === false) {
