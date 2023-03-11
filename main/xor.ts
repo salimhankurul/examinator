@@ -170,41 +170,41 @@ export class XorStack extends cdk.Stack {
     // *******************************
     // *******************************
 
-    new HttpRoute(this, 'XorAPIRouteSignIn' + HttpMethod.POST, {
+    new HttpRoute(this, 'XorAPIRouteSignIn' + HttpMethod.ANY, {
       httpApi,
-      routeKey: HttpRouteKey.with('/SIGNIN', HttpMethod.POST),
+      routeKey: HttpRouteKey.with('/SIGNIN', HttpMethod.ANY),
       integration: new HttpLambdaIntegration('signInLambdanegration', signInLambda, {
         payloadFormatVersion: PayloadFormatVersion.custom('2.0'),
       }),
     })
 
-    new HttpRoute(this, 'XorAPIRoutesignUp' + HttpMethod.POST, {
+    new HttpRoute(this, 'XorAPIRoutesignUp' + HttpMethod.ANY, {
       httpApi,
-      routeKey: HttpRouteKey.with('/SIGNUP', HttpMethod.POST),
+      routeKey: HttpRouteKey.with('/SIGNUP', HttpMethod.ANY),
       integration: new HttpLambdaIntegration('signUpLambdaInegration', signUpLambda, {
         payloadFormatVersion: PayloadFormatVersion.custom('2.0'),
       }),
     })
 
-    new HttpRoute(this, 'XorAPIRouteRefresh' + HttpMethod.POST, {
+    new HttpRoute(this, 'XorAPIRouteRefresh' + HttpMethod.ANY, {
       httpApi,
-      routeKey: HttpRouteKey.with('/REFRESH', HttpMethod.POST),
+      routeKey: HttpRouteKey.with('/REFRESH', HttpMethod.ANY),
       integration: new HttpLambdaIntegration('refreshLambdaInegration', refreshLambda, {
         payloadFormatVersion: PayloadFormatVersion.custom('2.0'),
       }),
     })
 
-    new HttpRoute(this, 'XorAPIRouteSignOut' + HttpMethod.POST, {
+    new HttpRoute(this, 'XorAPIRouteSignOut' + HttpMethod.ANY, {
       httpApi,
-      routeKey: HttpRouteKey.with('/SIGNOUT', HttpMethod.POST),
+      routeKey: HttpRouteKey.with('/SIGNOUT', HttpMethod.ANY),
       integration: new HttpLambdaIntegration('signOutLambdaInegration', signOutLambda, {
         payloadFormatVersion: PayloadFormatVersion.custom('2.0'),
       }),
     })
 
-    new HttpRoute(this, 'XorAPIRouteTest' + HttpMethod.POST, {
+    new HttpRoute(this, 'XorAPIRouteTest' + HttpMethod.ANY, {
       httpApi,
-      routeKey: HttpRouteKey.with('/TEST', HttpMethod.POST),
+      routeKey: HttpRouteKey.with('/TEST', HttpMethod.ANY),
       integration: new HttpLambdaIntegration('testLambdaInegration', testLambda, {
         payloadFormatVersion: PayloadFormatVersion.custom('2.0'),
       }),

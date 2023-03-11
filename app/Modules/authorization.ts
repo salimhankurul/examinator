@@ -123,6 +123,11 @@ export const validateSessionToken = async (_token: string, secret: string): Prom
 
 export const refreshToken = async (event: APIGatewayProxyEventV2, context: Context): Promise<ExaminatorResponse> => {
   try {
+    
+    if (event.requestContext.http.method === 'OPTIONS') {
+      return new Response({ statusCode: 200, body: {} }).response
+    }
+
     const _token = event.headers['_token'] // refresh token
     const reqIP = event.requestContext.http.sourceIp
 

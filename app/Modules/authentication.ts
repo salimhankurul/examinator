@@ -24,6 +24,11 @@ const encodePassword = (password: string) => crypto.createHash('sha3-512').updat
 
 export const signUp = async (event: APIGatewayProxyEventV2, context: Context): Promise<ExaminatorResponse> => {
   try {
+    
+    if (event.requestContext.http.method === 'OPTIONS') {
+      return new Response({ statusCode: 200, body: {} }).response
+    }
+
     const _input = registerInput.safeParse(JSON.parse(event.body || '{}'))
 
     if (_input.success === false) {
@@ -75,6 +80,11 @@ export const signUp = async (event: APIGatewayProxyEventV2, context: Context): P
 
 export const signIn = async (event: APIGatewayProxyEventV2, context: Context): Promise<ExaminatorResponse> => {
   try {
+
+    if (event.requestContext.http.method === 'OPTIONS') {
+      return new Response({ statusCode: 200, body: {} }).response
+    }
+
     const _input = signInInput.safeParse(JSON.parse(event.body || '{}'))
 
     if (_input.success === false) {
