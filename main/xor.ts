@@ -38,14 +38,24 @@ export class XorStack extends cdk.Stack {
     // *******************************
     // *******************************
 
-    const UserTable = new Table(this, 'UserTable', {
+    const authenticationTable = new Table(this, 'AuthenticationTable', {
       partitionKey: {
         name: 'email',
         type: AttributeType.STRING,
       },
       billingMode: BillingMode.PAY_PER_REQUEST,
       stream: StreamViewType.NEW_IMAGE,
-      tableName: 'UserTable',
+      tableName: 'AuthenticationTable',
+    })
+
+    const profileTable = new Table(this, 'ProfileTable', {
+      partitionKey: {
+        name: 'userId',
+        type: AttributeType.STRING,
+      },
+      billingMode: BillingMode.PAY_PER_REQUEST,
+      stream: StreamViewType.NEW_IMAGE,
+      tableName: 'ProfileTable',
     })
 
     const SessionTable = new Table(this, 'SessionTable', {
@@ -89,6 +99,19 @@ export class XorStack extends cdk.Stack {
       runtime: Runtime.NODEJS_16_X,
       code: Code.fromAsset('dist'),
       handler: 'index.test',
+      architecture: Architecture.ARM_64,
+      timeout: Duration.minutes(5),
+      role,
+      layers: [layer],
+      environment: {
+        ACCESS_TOKEN_SECRET: 'ACCESS_TOKEN_SECRET',
+      },
+    })
+
+    const updateProfileLambda = new Function(this, 'updateProfileLambda', {
+      runtime: Runtime.NODEJS_16_X,
+      code: Code.fromAsset('dist'),
+      handler: 'Modules/profile.updateProfile',
       architecture: Architecture.ARM_64,
       timeout: Duration.minutes(5),
       role,
@@ -169,6 +192,14 @@ export class XorStack extends cdk.Stack {
     // ********* HTTP ROUTES  ********
     // *******************************
     // *******************************
+
+    new HttpRoute(this, 'XorAPIRouteupdateProfileLambda' + HttpMethod.ANY, {
+      httpApi,
+      routeKey: HttpRouteKey.with('/PROFILE', HttpMethod.ANY),
+      integration: new HttpLambdaIntegration('updateProfileLambdanegration', updateProfileLambda, {
+        payloadFormatVersion: PayloadFormatVersion.custom('2.0'),
+      }),
+    })
 
     new HttpRoute(this, 'XorAPIRouteSignIn' + HttpMethod.ANY, {
       httpApi,

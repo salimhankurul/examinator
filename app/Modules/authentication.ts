@@ -6,9 +6,10 @@ import { v4 as uuidv4 } from 'uuid';
 import { createSession, terminateSession } from './authorization'
 import { signInInput, registerInput, signOutInput } from '../models'
 import { ExaminatorResponse, Response } from '../response'
-import { UserMetaData, userType } from '../types'
+import { AuthenticationTableItem, UserProfileItem } from '../types'
 
-const USER_TABLE = 'UserTable'
+const AuthenticationTable = 'AuthenticationTable'
+const ProfileTable = 'ProfileTable'
 
 const client = new DynamoDBClient({})
 
@@ -39,7 +40,7 @@ export const signUp = async (event: APIGatewayProxyEventV2, context: Context): P
 
     const checkExistingUser = await dynamo.send(
       new GetCommand({
-        TableName: USER_TABLE,
+        TableName: AuthenticationTable,
         Key: {
           email,
         },
@@ -49,28 +50,39 @@ export const signUp = async (event: APIGatewayProxyEventV2, context: Context): P
     if (checkExistingUser.Item) {
       throw new Response({ statusCode: 400, message: 'User with this email already exists !', addons: { email } })
     }
-
     const newId = uuidv4().replace(/-/g, '')
 
-    const user: UserMetaData = {
-      type: userType,
-      email,
-      id: newId,
-      password: encodePassword(password),
-    }
-
-    const dynamoReq = await dynamo.send(
+    const authDB = await dynamo.send(
       new PutCommand({
-        TableName: USER_TABLE,
-        Item: user,
+        TableName: AuthenticationTable,
+        Item: {
+          email,
+          password: encodePassword(password),
+          userId: newId,
+        } as AuthenticationTableItem,
+      }),
+      )
+      
+      if (authDB.$metadata.httpStatusCode !== 200) {
+        throw new Response({ statusCode: 400, message: 'Database Error, please contact admin !', addons: { error: authDB } })
+      }
+
+      
+    const profileDB = await dynamo.send(
+      new PutCommand({
+        TableName: ProfileTable,
+        Item: {
+          userId: newId,
+          userType,
+        },
       }),
     )
 
-    if (dynamoReq.$metadata.httpStatusCode !== 200) {
-      throw new Response({ statusCode: 400, message: 'Database Error, please contact admin !', addons: { error: dynamoReq } })
+    if (profileDB.$metadata.httpStatusCode !== 200) {
+      throw new Response({ statusCode: 400, message: 'Database Error, please contact admin !', addons: { error: profileDB } })
     }
 
-    const session = await createSession({ userId: user.id, userType: user.type }, event.requestContext.http.sourceIp)
+    const session = await createSession({ userId: newId, userType }, event.requestContext.http.sourceIp)
 
     return new Response({ statusCode: 200, body: session }).response
   } catch (error) {
@@ -93,22 +105,37 @@ export const signIn = async (event: APIGatewayProxyEventV2, context: Context): P
 
     const { email, password: recivedPassword } = _input.data
 
-    const dynamoReq = await dynamo.send(
+    const authDB = await dynamo.send(
       new GetCommand({
-        TableName: USER_TABLE,
+        TableName: AuthenticationTable,
         Key: {
           email,
         },
       }),
     )
 
-    if (!dynamoReq.Item || !dynamoReq.Item.password || dynamoReq.Item.password !== encodePassword(recivedPassword)) {
+    const authInfo = authDB.Item as AuthenticationTableItem
+
+    if (!authInfo || !authInfo.password || authInfo.password !== encodePassword(recivedPassword)) {
       throw new Response({ statusCode: 400, message: 'User with this email does not exist or Incorrect password !' })
     }
 
-    const user = dynamoReq.Item as UserMetaData
+    const profileDB = await dynamo.send(
+      new GetCommand({
+        TableName: ProfileTable,
+        Key: {
+          userId: authInfo.userId,
+        },
+      }),
+    )
 
-    const session = await createSession({ userId: user.id, userType: user.type }, event.requestContext.http.sourceIp)
+    const profileInfo = profileDB.Item as UserProfileItem
+
+    if (!profileInfo) {
+      throw new Response({ statusCode: 400, message: 'Error accured while trying to find user profile' })
+    }
+
+    const session = await createSession({ userId: profileInfo.userId, userType: profileInfo.userType }, event.requestContext.http.sourceIp)
 
     return new Response({ statusCode: 200, body: session }).response
   } catch (error) {

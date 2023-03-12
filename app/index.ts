@@ -1,7 +1,7 @@
 import crypto from 'crypto'
 import { APIGatewayProxyEventV2, Context } from 'aws-lambda'
 import { Response } from './response'
-import { UserMetaData, userType as userTypeSchema } from './types'
+import { userType as userTypeSchema } from './types'
 import { validateSessionToken } from './Modules/authorization'
 
 const { REFRESH_TOKEN_SECRET, ACCESS_TOKEN_SECRET } = process.env

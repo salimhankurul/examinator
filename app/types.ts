@@ -1,14 +1,38 @@
 import { z } from 'zod'
 
-export const userType = z.enum(['admin', 'teacher', 'student'])
+// **********  DB  **********
+// **********  DB  **********
+// **********  DB  **********
 
-export const user = z.object({
+export const authenticationTableItem = z.object({
     email: z.string().email(),
     password: z.string(),
-    type: userType,
-    id: z.string(),
+    userId: z.string(),
 })
-export type UserMetaData = z.infer<typeof user>
+export type AuthenticationTableItem = z.infer<typeof authenticationTableItem>
+
+export const userType = z.enum(['admin', 'teacher', 'student'])
+
+export const userProfileItem = z.object({
+    userId: z.string(),
+    userType: userType,
+    firstName: z.string(),
+    lastName: z.string(),
+    courses: z.array(z.string()),
+})
+export type UserProfileItem = z.infer<typeof userProfileItem>
+
+export const sessionTableItem = z.object({
+    userId: z.string(),
+    accessToken: z.string(),
+    refreshToken: z.string(),
+    expiresAt: z.number(),
+})
+export type SessionTableItem = z.infer<typeof sessionTableItem>
+
+// **********  Token  **********
+// **********  Token  **********
+// **********  Token  **********
 
 export const tokenMetaData = z.object({
     userType: userType,
@@ -24,14 +48,3 @@ export const validateTokenResponse = z.object({
     error: z.string(),
 }).partial()
 export type ValidateTokenResponse = z.infer<typeof validateTokenResponse>
-
-export const verifyRes = z.object({
-    email: z.string().email(),
-    type: userType,
-    id: z.string(),
-    IP: z.string(),
-    iat: z.number(),
-    exp: z.number(),
-    error: z.string(),
-})
-export type VerifyResponse = z.infer<typeof verifyRes>
