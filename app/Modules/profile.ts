@@ -69,3 +69,32 @@ export const updateProfile = async (event: APIGatewayProxyEventV2, context: Cont
     }
   }
   
+
+  export const getProfile = async (event: APIGatewayProxyEventV2, context: Context): Promise<ExaminatorResponse> => {
+    try {
+      
+      if (event.requestContext.http.method === 'OPTIONS') {
+        return new Response({ statusCode: 200, body: {} }).response
+      }
+  
+      const _token = event.headers['_token']
+  
+      const auth = await validateSessionToken(_token, ACCESS_TOKEN_SECRET)
+
+      const profileDB = await dynamo.send(
+        new GetCommand({
+          TableName: ProfileTable,
+          Key: {
+            userId: auth.userId,
+          },
+        }),
+      )
+  
+      const data: UserProfileItem = profileDB.Item as UserProfileItem
+
+      return new Response({ statusCode: 200, body: { success: true, data } }).response
+    } catch (error) {
+      return error instanceof Response ? error.response : new Response({ message: 'Generic Examinator Error', statusCode: 400, addons: { error: error.message } }).response
+    }
+  }
+  

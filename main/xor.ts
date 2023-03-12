@@ -108,6 +108,19 @@ export class XorStack extends cdk.Stack {
       },
     })
 
+    const getProfileLambda = new Function(this, 'getProfileLambda', {
+      runtime: Runtime.NODEJS_16_X,
+      code: Code.fromAsset('dist'),
+      handler: 'Modules/profile.getProfile',
+      architecture: Architecture.ARM_64,
+      timeout: Duration.minutes(5),
+      role,
+      layers: [layer],
+      environment: {
+        ACCESS_TOKEN_SECRET: 'ACCESS_TOKEN_SECRET',
+      },
+    })
+
     const updateProfileLambda = new Function(this, 'updateProfileLambda', {
       runtime: Runtime.NODEJS_16_X,
       code: Code.fromAsset('dist'),
@@ -195,8 +208,16 @@ export class XorStack extends cdk.Stack {
 
     new HttpRoute(this, 'XorAPIRouteupdateProfileLambda' + HttpMethod.ANY, {
       httpApi,
-      routeKey: HttpRouteKey.with('/PROFILE', HttpMethod.ANY),
+      routeKey: HttpRouteKey.with('/SET_PROFILE', HttpMethod.ANY),
       integration: new HttpLambdaIntegration('updateProfileLambdanegration', updateProfileLambda, {
+        payloadFormatVersion: PayloadFormatVersion.custom('2.0'),
+      }),
+    })
+
+    new HttpRoute(this, 'XorAPIRoutegetProfileLambda' + HttpMethod.ANY, {
+      httpApi,
+      routeKey: HttpRouteKey.with('/GET_PROFILE', HttpMethod.ANY),
+      integration: new HttpLambdaIntegration('getProfileLambdaanegration', getProfileLambda, {
         payloadFormatVersion: PayloadFormatVersion.custom('2.0'),
       }),
     })
