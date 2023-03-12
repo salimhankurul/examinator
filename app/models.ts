@@ -17,7 +17,8 @@ export const signOutInput = z.object({
 })
 
 export const updateProfileInput = z.object({
-  firstName: z.string().min(1),
-  lastName: z.string().min(1),
+  firstName: z.string().min(1).optional(),
+  lastName: z.string().min(1).optional(),
+  email: z.string().email().optional(),
   courses: z.array(z.string().min(1)).optional(),
 })

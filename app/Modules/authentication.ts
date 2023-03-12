@@ -74,6 +74,7 @@ export const signUp = async (event: APIGatewayProxyEventV2, context: Context): P
         Item: {
           userId: newId,
           userType,
+          email,
         },
       }),
     )

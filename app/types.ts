@@ -16,6 +16,7 @@ export const userType = z.enum(['admin', 'teacher', 'student'])
 export const userProfileItem = z.object({
     userId: z.string(),
     userType: userType,
+    email: z.string().email(),
     firstName: z.string(),
     lastName: z.string(),
     courses: z.array(z.string()),
