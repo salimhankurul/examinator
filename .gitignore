@@ -10,3 +10,4 @@ cdk.out
 .DS_Store
 test
 temp
+package-lock.json
