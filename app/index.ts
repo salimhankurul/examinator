@@ -8,7 +8,6 @@ const { REFRESH_TOKEN_SECRET, ACCESS_TOKEN_SECRET } = process.env
 
 export const test = async (event: APIGatewayProxyEventV2, context: Context) => {
   try {
-    
     if (event.requestContext.http.method === 'OPTIONS') {
       return new Response({ statusCode: 200, body: {} }).response
     }

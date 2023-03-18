@@ -24,7 +24,7 @@ const dynamo = DynamoDBDocumentClient.from(client)
 export const verifyToken = (token: string, secret: string): ValidateTokenResponse => {
   try {
     if (!secret || !token) {
-      throw new Response({ statusCode: 403, message: 'There has been problem whit your token',  addons: { errorCode: 0xff897 } })
+      throw new Response({ statusCode: 403, message: 'There has been problem whit your token', addons: { errorCode: 0xff897 } })
     }
 
     return { tokenMetaData: JWTVerify(token, secret) as TokenMetaData }
@@ -61,7 +61,7 @@ export const createSession = async ({ userId, userType }: any, IP: string) => {
   await dynamo.send(
     new PutCommand({
       TableName: SESSION_TABLE,
-      Item: sessionItem
+      Item: sessionItem,
     }),
   )
 
@@ -71,26 +71,26 @@ export const createSession = async ({ userId, userType }: any, IP: string) => {
 export const terminateSession = async (_token: string, targetUserId: string): Promise<void> => {
   const { tokenMetaData, error } = verifyToken(_token, ACCESS_TOKEN_SECRET)
 
- if (error) {
-   throw new Response({ statusCode: 403, message: 'There has been a problem while authorizing your token.', addons: { tokenError: error } })
- }
+  if (error) {
+    throw new Response({ statusCode: 403, message: 'There has been a problem while authorizing your token.', addons: { tokenError: error } })
+  }
 
- if (tokenMetaData.userId !== targetUserId && tokenMetaData.userType !== 'admin') {
-   throw new Response({ statusCode: 403, message: 'You are not authorized to terminate this session.' })
- }
+  if (tokenMetaData.userId !== targetUserId && tokenMetaData.userType !== 'admin') {
+    throw new Response({ statusCode: 403, message: 'You are not authorized to terminate this session.' })
+  }
 
- const dynamoReq = await dynamo.send(
-   new DeleteCommand({
-     TableName: SESSION_TABLE,
-     Key: {
-       userId: targetUserId,
-     },
-   }),
- )
+  const dynamoReq = await dynamo.send(
+    new DeleteCommand({
+      TableName: SESSION_TABLE,
+      Key: {
+        userId: targetUserId,
+      },
+    }),
+  )
 
- if (!dynamoReq.$metadata || dynamoReq.$metadata.httpStatusCode !== 200) {
-   throw new Response({ statusCode: 404, message: 'There has been a problem while terminating your session.' })
- }
+  if (!dynamoReq.$metadata || dynamoReq.$metadata.httpStatusCode !== 200) {
+    throw new Response({ statusCode: 404, message: 'There has been a problem while terminating your session.' })
+  }
 }
 
 export const validateSessionToken = async (_token: string, secret: string): Promise<TokenMetaData> => {
@@ -124,10 +124,8 @@ export const validateSessionToken = async (_token: string, secret: string): Prom
 // *******************************
 // *******************************
 
-
 export const refreshToken = async (event: APIGatewayProxyEventV2, context: Context): Promise<ExaminatorResponse> => {
   try {
-    
     if (event.requestContext.http.method === 'OPTIONS') {
       return new Response({ statusCode: 200, body: {} }).response
     }
@@ -136,7 +134,7 @@ export const refreshToken = async (event: APIGatewayProxyEventV2, context: Conte
     const reqIP = event.requestContext.http.sourceIp
 
     const tokenMetaData = await validateSessionToken(_token, REFRESH_TOKEN_SECRET)
-    
+
     if (tokenMetaData.IP !== reqIP) {
       throw new Response({ statusCode: 403, message: 'Token is not created with same IP' })
     }
@@ -150,4 +148,3 @@ export const refreshToken = async (event: APIGatewayProxyEventV2, context: Conte
     return error instanceof Response ? error.response : new Response({ message: 'Generic Examinator Error', statusCode: 400, addons: { error: error.message } }).response
   }
 }
-

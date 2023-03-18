@@ -2,7 +2,7 @@ import crypto from 'crypto'
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb'
 import { DynamoDBDocumentClient, PutCommand, GetCommand, DeleteCommand } from '@aws-sdk/lib-dynamodb'
 import { APIGatewayProxyEventV2, Context } from 'aws-lambda'
-import { v4 as uuidv4 } from 'uuid';
+import { v4 as uuidv4 } from 'uuid'
 import { createSession, terminateSession } from './authorization'
 import { signInInput, registerInput, signOutInput } from '../models'
 import { ExaminatorResponse, Response } from '../response'
@@ -25,7 +25,6 @@ const encodePassword = (password: string) => crypto.createHash('sha3-512').updat
 
 export const signUp = async (event: APIGatewayProxyEventV2, context: Context): Promise<ExaminatorResponse> => {
   try {
-    
     if (event.requestContext.http.method === 'OPTIONS') {
       return new Response({ statusCode: 200, body: {} }).response
     }
@@ -61,13 +60,12 @@ export const signUp = async (event: APIGatewayProxyEventV2, context: Context): P
           userId: newId,
         } as AuthenticationTableItem,
       }),
-      )
-      
-      if (authDB.$metadata.httpStatusCode !== 200) {
-        throw new Response({ statusCode: 400, message: 'Database Error, please contact admin !', addons: { error: authDB } })
-      }
+    )
 
-      
+    if (authDB.$metadata.httpStatusCode !== 200) {
+      throw new Response({ statusCode: 400, message: 'Database Error, please contact admin !', addons: { error: authDB } })
+    }
+
     const profileDB = await dynamo.send(
       new PutCommand({
         TableName: ProfileTable,
@@ -93,7 +91,6 @@ export const signUp = async (event: APIGatewayProxyEventV2, context: Context): P
 
 export const signIn = async (event: APIGatewayProxyEventV2, context: Context): Promise<ExaminatorResponse> => {
   try {
-
     if (event.requestContext.http.method === 'OPTIONS') {
       return new Response({ statusCode: 200, body: {} }).response
     }
@@ -101,7 +98,7 @@ export const signIn = async (event: APIGatewayProxyEventV2, context: Context): P
     const _input = signInInput.safeParse(JSON.parse(event.body || '{}'))
 
     if (_input.success === false) {
-      throw new Response({ statusCode: 400, message: 'Woops! It looks like you sent us the wrong data. Double-check your request and try again.',  addons: { issues: _input.error.issues } })
+      throw new Response({ statusCode: 400, message: 'Woops! It looks like you sent us the wrong data. Double-check your request and try again.', addons: { issues: _input.error.issues } })
     }
 
     const { email, password: recivedPassword } = _input.data
@@ -146,7 +143,6 @@ export const signIn = async (event: APIGatewayProxyEventV2, context: Context): P
 
 export const signOut = async (event: APIGatewayProxyEventV2, context: Context): Promise<ExaminatorResponse> => {
   try {
-    
     if (event.requestContext.http.method === 'OPTIONS') {
       return new Response({ statusCode: 200, body: {} }).response
     }
@@ -154,7 +150,7 @@ export const signOut = async (event: APIGatewayProxyEventV2, context: Context): 
     const _input = signOutInput.safeParse(JSON.parse(event.body || '{}'))
 
     if (_input.success === false) {
-      throw new Response({ statusCode: 400, message: 'Woops! It looks like you sent us the wrong data. Double-check your request and try again.',  addons: { issues: _input.error.issues } })
+      throw new Response({ statusCode: 400, message: 'Woops! It looks like you sent us the wrong data. Double-check your request and try again.', addons: { issues: _input.error.issues } })
     }
 
     const _token = event.headers['_token']
