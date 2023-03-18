@@ -13,13 +13,19 @@ export type AuthenticationTableItem = z.infer<typeof authenticationTableItem>
 
 export const userType = z.enum(['admin', 'teacher', 'student'])
 
+export const course = z.object({
+  label: z.string(),
+  value: z.string(),
+})
+export type Course = z.infer<typeof course>
+
 export const userProfileItem = z.object({
   userId: z.string(),
   userType: userType,
   email: z.string().email(),
   firstName: z.string(),
   lastName: z.string(),
-  courses: z.array(z.string()),
+  courses: z.array(course),
 })
 export type UserProfileItem = z.infer<typeof userProfileItem>
 

@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { userType, userProfileItem } from './types'
+import { userType, userProfileItem, course } from './types'
 
 export const registerInput = z.object({
   email: z.string().email(),
@@ -20,5 +20,5 @@ export const updateProfileInput = z.object({
   firstName: z.string().min(1).optional(),
   lastName: z.string().min(1).optional(),
   email: z.string().email().optional(),
-  courses: z.array(z.string().min(1)).optional(),
+  courses: z.array(course).optional(),
 })
