@@ -215,7 +215,7 @@ export const joinExam = async (event: APIGatewayProxyEventV2, context: Context):
 //       return new Response({ statusCode: 200, body: {} }).response
 //     }
 
-//     const _token = event.headers['_token']
+//     const _token = event.headers['access-token']
 
 //     const auth = await validateSessionToken(_token, ACCESS_TOKEN_SECRET)
 //     const examId = event.pathParameters?.examId

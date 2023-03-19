@@ -143,7 +143,7 @@ export const refreshToken = async (event: APIGatewayProxyEventV2, context: Conte
       return new Response({ statusCode: 200, body: {} }).response
     }
 
-    const _token = event.headers['_token'] // refresh token
+    const _token = event.headers['refresh-token'] // refresh token
     const reqIP = event.requestContext.http.sourceIp
 
     const tokenMetaData = await validateSessionToken(_token, REFRESH_TOKEN_SECRET)

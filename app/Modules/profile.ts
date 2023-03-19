@@ -27,7 +27,7 @@ export const updateProfile = async (event: APIGatewayProxyEventV2, context: Cont
       throw new Response({ statusCode: 400, message: 'Woops! It looks like you sent us the wrong data. Double-check your request and try again.', addons: { issues: _input.error.issues } })
     }
 
-    const _token = event.headers['_token']
+    const _token = event.headers['access-token']
 
     const auth = await validateSessionToken(_token, ACCESS_TOKEN_SECRET)
 
@@ -75,7 +75,7 @@ export const getProfile = async (event: APIGatewayProxyEventV2, context: Context
       return new Response({ statusCode: 200, body: {} }).response
     }
 
-    const _token = event.headers['_token']
+    const _token = event.headers['access-token']
 
     const auth = await validateSessionToken(_token, ACCESS_TOKEN_SECRET)
 

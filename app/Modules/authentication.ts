@@ -154,7 +154,7 @@ export const signOut = async (event: APIGatewayProxyEventV2, context: Context): 
       throw new Response({ statusCode: 400, message: 'Woops! It looks like you sent us the wrong data. Double-check your request and try again.', addons: { issues: _input.error.issues } })
     }
 
-    const _token = event.headers['_token']
+    const _token = event.headers['access-token']
 
     const res = await terminateSession(_token, _input.data.userId)
 
