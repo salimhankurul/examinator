@@ -40,8 +40,17 @@ export const createExamInput = z.object({
   courseName: z.string(),
   courseId: z.string(),
   minimumPassingScore: z.number(),
-  startTime: z.number(),
+  startDate: z.number(),
   duration: z.number(),
 })
 export type CreateExamInput = z.infer<typeof createExamInput>
 
+export const submitAnswerInput = z.object({
+  questionId: z.string(),
+  optionId: z.string(),
+})
+
+export const joinExamInput = z.object({
+  examId: z.string(),
+  courseId: z.string(),
+})

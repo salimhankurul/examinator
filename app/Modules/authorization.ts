@@ -4,7 +4,7 @@ import { DynamoDBDocumentClient, PutCommand, GetCommand, DeleteCommand } from '@
 import { sign, verify as JWTVerify } from 'jsonwebtoken'
 import { APIGatewayProxyEventV2, Context } from 'aws-lambda'
 import { Response, ExaminatorResponse } from '../response'
-import { ValidateTokenResponse, TokenMetaData, SessionTableItem } from '../types'
+import { ValidateTokenResponse, TokenMetaData, SessionTableItem, ExamTokenMetaData } from '../types'
 
 const { REFRESH_TOKEN_SECRET, ACCESS_TOKEN_SECRET } = process.env
 const ACCESS_TOKEN_TTL = 30000
@@ -20,7 +20,7 @@ const dynamo = DynamoDBDocumentClient.from(client)
 // *********** TOKEN *************
 // *******************************
 // *******************************
-
+// TODO: getrid of thiss
 export const verifyToken = (token: string, secret: string): ValidateTokenResponse => {
   try {
     if (!secret || !token) {
@@ -116,6 +116,19 @@ export const validateSessionToken = async (_token: string, secret: string): Prom
   }
 
   return tokenMetaData
+}
+
+
+export const validateExamToken = async (_token: string, secret: string): Promise<ExamTokenMetaData> => {
+  if (!secret || !_token) {
+    throw new Response({ statusCode: 403, message: 'There is a problem whit existance of your exam token', addons: { one: _token ? 1 : 0, two: secret ? 1 : 0 } })
+  }
+
+  try {
+    return JWTVerify(_token, secret) as ExamTokenMetaData
+  } catch (error) {
+      throw new Response({ statusCode: 403, message: 'There has been a problem while authorizing your exam token.', addons: { tokenError: error.message } })
+  }
 }
 
 // *******************************

@@ -245,6 +245,20 @@ export class XorStack extends cdk.Stack {
       },
     })
 
+    const joinExamLambda = new Function(this, 'joinExamLambda', {
+      runtime: Runtime.NODEJS_16_X,
+      code: Code.fromAsset('dist'),
+      handler: 'Modules/exam.joinExam',
+      architecture: Architecture.ARM_64,
+      timeout: Duration.seconds(45),
+      role,
+      layers: [layer],
+      environment: {
+        ACCESS_TOKEN_SECRET: 'ACCESS_TOKEN_SECRET',
+        EXAM_TOKEN_SECRET: 'EXAM_TOKEN_SECRET',
+      },
+    })
+
     const submitExamAnswerLambda = new Function(this, 'submitExamAnswer', {
       runtime: Runtime.NODEJS_16_X,
       code: Code.fromAsset('dist'),
@@ -255,6 +269,7 @@ export class XorStack extends cdk.Stack {
       layers: [layer],
       environment: {
         ACCESS_TOKEN_SECRET: 'ACCESS_TOKEN_SECRET',
+        EXAM_TOKEN_SECRET: 'EXAM_TOKEN_SECRET',
       },
     })
 
@@ -335,6 +350,14 @@ export class XorStack extends cdk.Stack {
       httpApi,
       routeKey: HttpRouteKey.with('/CREATE', HttpMethod.ANY),
       integration: new HttpLambdaIntegration('createExamLambdaInegration', createExamLambda, {
+        payloadFormatVersion: PayloadFormatVersion.custom('2.0'),
+      }),
+    })
+
+    new HttpRoute(this, 'XorAPIRouteJoinExamLambda' + HttpMethod.ANY, {
+      httpApi,
+      routeKey: HttpRouteKey.with('/JOIN', HttpMethod.ANY),
+      integration: new HttpLambdaIntegration('joinExamLambdaInegration', joinExamLambda, {
         payloadFormatVersion: PayloadFormatVersion.custom('2.0'),
       }),
     })

@@ -41,6 +41,12 @@ export type SessionTableItem = z.infer<typeof sessionTableItem>
 // **********  Exam  **********
 // **********  Exam  **********
 
+export interface ExamTokenMetaData {
+  examId: string
+  courseId: string
+  userId: string
+}
+
 // **********  Exam on DB start  **********
 
 export const examTableItem = z.object({
@@ -50,10 +56,12 @@ export const examTableItem = z.object({
   courseName: z.string(),
   courseId: z.string(),
   minimumPassingScore: z.number(),
-  startTime: z.number(),
+  startDate: z.number(),
   duration: z.number(),
   createdAt: z.string(),
   createdBy: z.string(),
+  questionsMetaData: z.record(z.string(), z.array(z.string())),
+  sessions: z.record(z.string(), z.string()),
 })
 export type ExamTableItem = z.infer<typeof examTableItem>
 
