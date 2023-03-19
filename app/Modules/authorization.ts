@@ -7,8 +7,8 @@ import { Response, ExaminatorResponse } from '../response'
 import { ValidateTokenResponse, TokenMetaData, SessionTableItem } from '../types'
 
 const { REFRESH_TOKEN_SECRET, ACCESS_TOKEN_SECRET } = process.env
-const ACCESS_TOKEN_TTL = 300
-const REFRESH_TOKEN_TTL = 600
+const ACCESS_TOKEN_TTL = 30000
+const REFRESH_TOKEN_TTL = 60000
 const SESSION_TABLE = 'SessionTable'
 
 const client = new DynamoDBClient({})

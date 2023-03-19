@@ -12,10 +12,22 @@ import { Effect, PolicyStatement, Role, ServicePrincipal } from 'aws-cdk-lib/aws
 import { DomainName, HttpApi, HttpMethod, HttpRoute, HttpRouteKey, PayloadFormatVersion } from '@aws-cdk/aws-apigatewayv2-alpha'
 import { HttpLambdaIntegration } from '@aws-cdk/aws-apigatewayv2-integrations-alpha'
 import { Certificate } from 'aws-cdk-lib/aws-certificatemanager'
+import { BlockPublicAccess, Bucket } from 'aws-cdk-lib/aws-s3'
 
 export class XorStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
     super(scope, id, props)
+
+    // *******************************
+    // *******************************
+    // ************ LAYER  ***********
+    // *******************************
+    // *******************************
+
+    const cloudObjectBucket = new Bucket(this, 'COSBucket', {
+      bucketName: 'examinator-bucket',
+      blockPublicAccess: BlockPublicAccess.BLOCK_ALL,
+  })
 
     // *******************************
     // *******************************
@@ -67,6 +79,20 @@ export class XorStack extends cdk.Stack {
       stream: StreamViewType.NEW_IMAGE,
       timeToLiveAttribute: 'expiresAt',
       tableName: 'SessionTable',
+    })
+
+    const AnswersTable = new Table(this, 'AnswersTable', {
+      partitionKey: {
+        name: 'examId',
+        type: AttributeType.STRING,
+      },
+      sortKey: {
+        name: 'userId',
+        type: AttributeType.STRING,
+      },
+      billingMode: BillingMode.PAY_PER_REQUEST,
+      stream: StreamViewType.NEW_IMAGE,
+      tableName: 'AnswersTable',
     })
 
     // *******************************
@@ -189,6 +215,32 @@ export class XorStack extends cdk.Stack {
       },
     })
 
+    const createExamLambda = new Function(this, 'createExamLambda', {
+      runtime: Runtime.NODEJS_16_X,
+      code: Code.fromAsset('dist'),
+      handler: 'Modules/exam.createExam',
+      architecture: Architecture.ARM_64,
+      timeout: Duration.seconds(45),
+      role,
+      layers: [layer],
+      environment: {
+        ACCESS_TOKEN_SECRET: 'ACCESS_TOKEN_SECRET',
+      },
+    })
+
+    const submitExamAnswerLambda = new Function(this, 'submitExamAnswer', {
+      runtime: Runtime.NODEJS_16_X,
+      code: Code.fromAsset('dist'),
+      handler: 'Modules/exam-answers.submitExamAnswer',
+      architecture: Architecture.ARM_64,
+      timeout: Duration.seconds(45),
+      role,
+      layers: [layer],
+      environment: {
+        ACCESS_TOKEN_SECRET: 'ACCESS_TOKEN_SECRET',
+      },
+    })
+
     // *******************************
     // *******************************
     // ************* HTTP  ***********
@@ -254,6 +306,22 @@ export class XorStack extends cdk.Stack {
       }),
     })
 
+    new HttpRoute(this, 'XorAPIRouteSubmitExamAnswer' + HttpMethod.ANY, {
+      httpApi,
+      routeKey: HttpRouteKey.with('/SUBMIT', HttpMethod.ANY),
+      integration: new HttpLambdaIntegration('submitExamAnswerLambdaInegration', submitExamAnswerLambda, {
+        payloadFormatVersion: PayloadFormatVersion.custom('2.0'),
+      }),
+    })
+
+    new HttpRoute(this, 'XorAPIRouteCreateExamLambda' + HttpMethod.ANY, {
+      httpApi,
+      routeKey: HttpRouteKey.with('/CREATE', HttpMethod.ANY),
+      integration: new HttpLambdaIntegration('createExamLambdaInegration', createExamLambda, {
+        payloadFormatVersion: PayloadFormatVersion.custom('2.0'),
+      }),
+    })
+
     new HttpRoute(this, 'XorAPIRouteTest' + HttpMethod.ANY, {
       httpApi,
       routeKey: HttpRouteKey.with('/TEST', HttpMethod.ANY),
@@ -273,6 +341,7 @@ function getLayerHash(packagePath: string): string {
 
 const app = new cdk.App()
 new XorStack(app, 'XorStack', {
+  env: { region: 'eu-west-1' }
   /* If you don't specify 'env', this stack will be environment-agnostic.
    * Account/Region-dependent features and context lookups will not work,
    * but a single synthesized template can be deployed anywhere. */

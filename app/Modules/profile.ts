@@ -51,6 +51,7 @@ export const updateProfile = async (event: APIGatewayProxyEventV2, context: Cont
       ..._input.data,
     }
 
+    // TODO: use update command
     const newProfile = await dynamo.send(
       new PutCommand({
         TableName: ProfileTable,

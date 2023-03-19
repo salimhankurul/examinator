@@ -51,6 +51,7 @@ export const signUp = async (event: APIGatewayProxyEventV2, context: Context): P
     }
     const newId = uuidv4().replace(/-/g, '')
 
+    // TODO: ConditionExpression: 'attribute_not_exists(examId) OR attribute_not_exists(userId)',
     const authDB = await dynamo.send(
       new PutCommand({
         TableName: AuthenticationTable,
