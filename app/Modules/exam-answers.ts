@@ -1,6 +1,6 @@
 import { APIGatewayProxyEventV2, Context } from 'aws-lambda'
-import { DynamoDBClient, UpdateItemCommand, GetItemCommand } from '@aws-sdk/client-dynamodb'
-import { DynamoDBDocumentClient, PutCommand, GetCommand, DeleteCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb'
+import { DynamoDBClient } from '@aws-sdk/client-dynamodb'
+import { GetCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb'
 import { Response, ExaminatorResponse } from '../response'
 import { validateExamToken, validateSessionToken } from './authorization'
 import { ExamsTable, ExamUsers } from '../utils'
@@ -57,20 +57,19 @@ export const submitExamAnswer = async (event: APIGatewayProxyEventV2, context: C
     const params = {
       TableName: ExamUsers,
       Key: {
-        examId: { S: examAuth.examId },
-        userId: { S: examAuth.userId },
+        examId: examAuth.examId,
+        userId: examAuth.userId,
       },
-      UpdateExpression: 'SET #myMap.#newKey = :newValue',
+      UpdateExpression: 'SET userAnswers.#k = :v',
       ExpressionAttributeNames: {
-        '#myMap': 'userAnswers',
-        '#newKey': questionId
+        '#k': questionId
       },
       ExpressionAttributeValues: {
-        ':newValue': { S: optionId }
+        ':v': optionId
       }
     };
     
-    await dynamo.send(new UpdateItemCommand(params))
+    await dynamo.send(new UpdateCommand(params))
 
     return new Response({ statusCode: 200, body: { success: true } }).response
   } catch (error) {

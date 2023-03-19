@@ -198,6 +198,7 @@ export const joinExam = async (event: APIGatewayProxyEventV2, context: Context):
           examId,
           userId: auth.userId,
           userExamToken,
+          userAnswers: {},
         },
       }),
     )
