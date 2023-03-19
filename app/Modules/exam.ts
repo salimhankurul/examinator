@@ -6,8 +6,8 @@ import { v4 as uuidv4 } from 'uuid'
 
 import { validateSessionToken } from './authorization'
 import { Response, ExaminatorResponse } from '../response'
-import { answersTable, examinatorBucket, streamToString } from '../utils'
-import { Exam, exam, examAnswerTableItem, ExamAnswerTableItem } from '../types';
+import { examinatorBucket, ExamsTable, streamToString } from '../utils'
+import { ExamS3Item, ExamTableItem } from '../types';
 import { createExamInput, CreateExamInput } from '../models';
 
 const { ACCESS_TOKEN_SECRET } = process.env
@@ -16,6 +16,8 @@ const s3 = new S3Client({})
 
 const dynamo = new DynamoDBClient({})
 
+// TODO valite course exists
+// TODO validate user is teacher or admin
 export const createExam = async (event: APIGatewayProxyEventV2, context: Context): Promise<ExaminatorResponse> => {
   try {
     if (event.requestContext.http.method === 'OPTIONS') {
@@ -42,7 +44,7 @@ export const createExam = async (event: APIGatewayProxyEventV2, context: Context
     }))
 
     // set correct option id & remove isCorrect
-    const cleaned_questions = questions.map(question => ({
+    const examQuestions = questions.map(question => ({
       ...question,
       corectOptionId: question.options.find(option => option.isCorrect)!.optionId,
       options: question.options.map(option => ({
@@ -51,35 +53,39 @@ export const createExam = async (event: APIGatewayProxyEventV2, context: Context
       })),
     }))
 
-    const s3_exam: Exam = {
+    const s3_exam: ExamS3Item = {
+      examId,
+      examQuestions
+    }
+
+    delete inputExam.examQuestions
+    
+    const db_exam: ExamTableItem = {
       ...inputExam,
       examId,
-      examQuestions: cleaned_questions,
-      examCreatedAt: new Date().toISOString(),
-      examCreatedBy: auth.userId,
+      createdAt: new Date().toISOString(),
+      createdBy: auth.userId,
     }
 
-    await s3.send(
-      new PutObjectCommand({
-        Bucket: examinatorBucket,
-        Key: `exams/${inputExam.examCourseId}/${examId}.json`,
-        Body: JSON.stringify(s3_exam),
-      })
-    )
+    const workes = [
+      s3.send(
+        new PutObjectCommand({
+          Bucket: examinatorBucket,
+          Key: `exams/${inputExam.courseId}/${examId}.json`,
+          Body: JSON.stringify(s3_exam),
+        }),
+      ),
+      dynamo.send(
+        new PutCommand({
+          TableName: ExamsTable,
+          Item: db_exam,
+        }),
+      ),
+    ]
 
-    const answertableItem: ExamAnswerTableItem = {
-      examId,
-      userId: auth.userId,
-    }
+    await Promise.all(workes)
 
-    await dynamo.send(
-      new PutCommand({
-        TableName: answersTable,
-        Item: answertableItem
-      }),
-    )
-
-    return new Response({ statusCode: 200, body: { success: true, examId } }).response
+    return new Response({ statusCode: 200, body: { success: true, exam: db_exam } }).response
   } catch (error) {
     console.log(error)
     return error instanceof Response ? error.response : new Response({ message: 'Generic Examinator Error', statusCode: 400, addons: { error: error.message } }).response

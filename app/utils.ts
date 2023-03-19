@@ -1,5 +1,6 @@
 import { Readable } from "stream"
 
+export const ExamsTable = 'ExamsTable'
 export const answersTable = 'AnswersTable'
 export const examinatorBucket = 'examinator-bucket'
 

@@ -14,6 +14,9 @@ import { HttpLambdaIntegration } from '@aws-cdk/aws-apigatewayv2-integrations-al
 import { Certificate } from 'aws-cdk-lib/aws-certificatemanager'
 import { BlockPublicAccess, Bucket } from 'aws-cdk-lib/aws-s3'
 
+// TODO: remove 'table' from table names
+// TODO: change profile table name to 'users'
+
 export class XorStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
     super(scope, id, props)
@@ -79,6 +82,20 @@ export class XorStack extends cdk.Stack {
       stream: StreamViewType.NEW_IMAGE,
       timeToLiveAttribute: 'expiresAt',
       tableName: 'SessionTable',
+    })
+
+    const ExamsTable = new Table(this, 'ExamsTable', {
+      partitionKey: {
+        name: 'examId',
+        type: AttributeType.STRING,
+      },
+      sortKey: {
+        name: 'courseId',
+        type: AttributeType.STRING,
+      },
+      billingMode: BillingMode.PAY_PER_REQUEST,
+      stream: StreamViewType.NEW_IMAGE,
+      tableName: 'ExamsTable',
     })
 
     const AnswersTable = new Table(this, 'AnswersTable', {

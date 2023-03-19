@@ -1,5 +1,13 @@
 import { z } from 'zod'
 
+export const userType = z.enum(['admin', 'teacher', 'student'])
+
+export const course = z.object({
+  label: z.string(),
+  value: z.string(),
+})
+export type Course = z.infer<typeof course>
+
 // **********  DB  **********
 // **********  DB  **********
 // **********  DB  **********
@@ -10,14 +18,6 @@ export const authenticationTableItem = z.object({
   userId: z.string(),
 })
 export type AuthenticationTableItem = z.infer<typeof authenticationTableItem>
-
-export const userType = z.enum(['admin', 'teacher', 'student'])
-
-export const course = z.object({
-  label: z.string(),
-  value: z.string(),
-})
-export type Course = z.infer<typeof course>
 
 export const userProfileItem = z.object({
   userId: z.string(),
@@ -37,9 +37,29 @@ export const sessionTableItem = z.object({
 })
 export type SessionTableItem = z.infer<typeof sessionTableItem>
 
+// **********  Exam  **********
+// **********  Exam  **********
+// **********  Exam  **********
 
+// **********  Exam on DB start  **********
 
-// **********  ExamAnswerTableItem DB **********
+export const examTableItem = z.object({
+  examId: z.string(),
+  name: z.string(),
+  description: z.string(),
+  courseName: z.string(),
+  courseId: z.string(),
+  minimumPassingScore: z.number(),
+  startTime: z.number(),
+  duration: z.number(),
+  createdAt: z.string(),
+  createdBy: z.string(),
+})
+export type ExamTableItem = z.infer<typeof examTableItem>
+
+// **********  Exam on DB end  **********
+
+// **********  Exam on S3 start **********
 
 export const examOption = z.object({
   optionId: z.string(),
@@ -53,23 +73,15 @@ export const examsQuestion = z.object({
   options: z.array(examOption),  
 })
 
-export const exam = z.object({
+export const examS3Item = z.object({
   examId: z.string(),
-  examName: z.string(),
-  examDescription: z.string(),
-  examDuration: z.number(),
   examQuestions: z.array(examsQuestion),
-  examCourse: z.string(),
-  examCourseId: z.string(),
-  minimumPassingScore: z.number(),
-  examStartTime: z.number(),
-  examEndTime: z.number(),
-  examCreatedAt: z.string(),
-  examCreatedBy: z.string(),
 })
-export type Exam = z.infer<typeof exam>
+export type ExamS3Item = z.infer<typeof examS3Item>
 
-// **********  ExamAnswerTableItem DB **********
+// **********  Exam on S3 end **********
+
+// **********  start ExamAnswerTableItem DB **********
 
 const examQuestion = z.object({
   questionId: z.string(),
@@ -89,8 +101,7 @@ export const examAnswerTableItem = z.object({
 })
 export type ExamAnswerTableItem = z.infer<typeof examAnswerTableItem>
 
-// **********  ExamAnswerTableItem DB **********
-
+// **********  end ExamAnswerTableItem DB **********
 
 // **********  Token  **********
 // **********  Token  **********

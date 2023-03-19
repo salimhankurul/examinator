@@ -34,15 +34,14 @@ const examQuestionInput = z.object({
 })
 
 export const createExamInput = z.object({
-  examName: z.string(),
-  examDescription: z.string(),
-  examDuration: z.number(),
+  name: z.string(),
+  description: z.string(),
   examQuestions: z.array(examQuestionInput),
-  examCourse: z.string(),
-  examCourseId: z.string(),
+  courseName: z.string(),
+  courseId: z.string(),
   minimumPassingScore: z.number(),
-  examStartTime: z.number(),
-  examEndTime: z.number(),
+  startTime: z.number(),
+  duration: z.number(),
 })
 export type CreateExamInput = z.infer<typeof createExamInput>
 
