@@ -1,9 +1,9 @@
 import { APIGatewayProxyEventV2, Context } from 'aws-lambda'
-import { DynamoDBClient } from '@aws-sdk/client-dynamodb'
+import { DynamoDBClient, UpdateItemCommand, GetItemCommand } from '@aws-sdk/client-dynamodb'
 import { DynamoDBDocumentClient, PutCommand, GetCommand, DeleteCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb'
 import { Response, ExaminatorResponse } from '../response'
 import { validateExamToken, validateSessionToken } from './authorization'
-import { answersTable, ExamsTable } from '../utils'
+import { ExamsTable, ExamUsers } from '../utils'
 import { submitAnswerInput } from '../models'
 import { ExamTableItem } from '../types'
 
@@ -25,6 +25,10 @@ export const submitExamAnswer = async (event: APIGatewayProxyEventV2, context: C
 
     // this will handle -> is exam exist & is exam time ended
     const examAuth = await validateExamToken(examToken, EXAM_TOKEN_SECRET)
+
+    if (examAuth.userId !== auth.userId) {
+      throw new Response({ statusCode: 400, message: 'This exam doesnt belong to this user', addons: { examAuth, auth } })
+    }
 
     const { questionId, optionId } = submitAnswerInput.parse(JSON.parse(event.body!))
 
@@ -48,43 +52,55 @@ export const submitExamAnswer = async (event: APIGatewayProxyEventV2, context: C
       throw new Response({ statusCode: 400, message: 'This exam doesnt have this question or this question doesnt have this option', addons: { examId: examAuth.examId, questionId, optionId } })
     }
 
-    // const putCommand = new PutCommand({
-    //   TableName: answersTable,
-    //   Item: {
-    //     examId: examAuth.examId,
-    //     userId: auth.userId,
-    //     answers: [{ questionId, answerId: optionId }]
-    //   },
-    //   ConditionExpression: 'attribute_not_exists(examId) OR attribute_not_exists(userId)'
-    // })
+    // ********************
 
-    // const updateCommand = new UpdateCommand({
-    //   TableName: answersTable,
-    //   Key: {
-    //     examId: examAuth.examId,
-    //     userId: auth.userId,
-    //   },
-    //   UpdateExpression: 'SET #answers = list_append(#answers, :answer)',
-    //   ExpressionAttributeNames: {
-    //     '#answers': 'answers'
-    //   },
-    //   // ExpressionAttributeValues: {
-    //   //   ':answer': { L: [{ M: { questionId: { S: questionId }, answerId: { N: answerId.toString() } } }] }
-    //   // }
-    // })
-
-    // try {
-    //   await dynamo.send(putCommand)
-    // } catch (putError) {
-    //   if (putError.code === 'ConditionalCheckFailedException') {
-    //     await dynamo.send(updateCommand)
-    //   } else {
-    //     throw putError
-    //   }
-    // }
+    const params = {
+      TableName: ExamUsers,
+      Key: {
+        examId: { S: examAuth.examId },
+        userId: { S: examAuth.userId },
+      },
+      UpdateExpression: 'SET #myMap.#newKey = :newValue',
+      ExpressionAttributeNames: {
+        '#myMap': 'userAnswers',
+        '#newKey': questionId
+      },
+      ExpressionAttributeValues: {
+        ':newValue': { S: optionId }
+      }
+    };
+    
+    await dynamo.send(new UpdateItemCommand(params))
 
     return new Response({ statusCode: 200, body: { success: true } }).response
   } catch (error) {
     return error instanceof Response ? error.response : new Response({ message: 'Generic Examinator Error', statusCode: 400, addons: { error: error.message } }).response
   }
 }
+
+
+
+// const params = {
+//   TableName: ExamUsers,
+//   Key: {
+//     examId: { S: examAuth.examId },
+//     userId: { S: examAuth.userId },
+//   },
+//   UpdateExpression: "SET #ua = list_append(if_not_exists(#ua, :empty_list), :ua)",
+//   ExpressionAttributeNames: {
+//     "#ua": "userAnswers",
+//   },
+//   ExpressionAttributeValues: {
+//     ":ua": {
+//       L: [
+//         {
+//           M: {
+//             questionId: { S: questionId },
+//             optionId: { S: optionId },
+//           },
+//         },
+//       ],
+//     },
+//     ":empty_list": { L: [] },
+//   },
+// };

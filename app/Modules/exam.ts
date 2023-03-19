@@ -7,8 +7,8 @@ import { sign, verify as JWTVerify } from 'jsonwebtoken'
 
 import { validateSessionToken } from './authorization'
 import { Response, ExaminatorResponse } from '../response'
-import { examinatorBucket, ExamsTable, nanoid, streamToString } from '../utils'
-import { ExamS3Item, ExamTableItem, ExamTokenMetaData } from '../types'
+import { examinatorBucket, ExamsTable, ExamUsers, nanoid, streamToString } from '../utils'
+import { ExamS3Item, ExamTableItem, ExamTokenMetaData, ExamUsersTableItem } from '../types'
 import { createExamInput, CreateExamInput, joinExamInput } from '../models'
 import { Readable } from 'stream'
 
@@ -51,7 +51,7 @@ export const createExam = async (event: APIGatewayProxyEventV2, context: Context
     // set correct option id & remove isCorrect
     const examQuestions = questions.map((question) => ({
       ...question,
-      corectOptionId: question.options.find((option) => option.isCorrect)!.optionId,
+      correctOptionId: question.options.find((option) => option.isCorrect)!.optionId,
       options: question.options.map((option) => ({
         optionId: option.optionId,
         optionText: option.optionText,
@@ -80,9 +80,6 @@ export const createExam = async (event: APIGatewayProxyEventV2, context: Context
     const db_exam: ExamTableItem = {
       ...inputExam,
       examId,
-      sessions: {
-        "admin": 'admin',
-      },
       questionsMetaData,
       createdAt: new Date().toISOString(),
       createdBy: auth.userId,
@@ -120,8 +117,6 @@ export const createExam = async (event: APIGatewayProxyEventV2, context: Context
 }
 
 // TODO: validate user can join this exam
-// TODO: make sure remove correct option id
-// TODO: dont keep sessions in db, dont have sessions at all
 export const joinExam = async (event: APIGatewayProxyEventV2, context: Context): Promise<ExaminatorResponse> => {
   try {
     if (event.requestContext.http.method === 'OPTIONS') {
@@ -130,7 +125,7 @@ export const joinExam = async (event: APIGatewayProxyEventV2, context: Context):
     const _token = event.headers['access-token']
 
     const auth = await validateSessionToken(_token, ACCESS_TOKEN_SECRET)
-    
+
     const { examId, courseId } = joinExamInput.parse(JSON.parse(event.body!))
 
     const examGetDB = await dynamo.send(
@@ -149,47 +144,6 @@ export const joinExam = async (event: APIGatewayProxyEventV2, context: Context):
       throw new Response({ statusCode: 400, message: 'This exam doesnt exist !', addons: { examId, courseId } })
     }
 
-    if (!exam.sessions[auth.userId]) {
-      const examTokenExp = (exam.duration + exam.startDate) * 1000
-
-      if (examTokenExp < Date.now()) {
-        throw new Response({ statusCode: 400, message: 'Exam token expiration date is in the past', addons: { examTokenExp } })
-      }
-
-      const tokenData: ExamTokenMetaData = {
-        examId,
-        courseId,
-        userId: auth.userId,
-      }
-
-      const examToken = sign(tokenData, EXAM_TOKEN_SECRET, { expiresIn: examTokenExp })
-
-      exam.sessions[auth.userId] = examToken
-      // **********
-      // **********
-
-      const examUpdateDB = await dynamo.send(
-        new UpdateCommand({
-          TableName: ExamsTable,
-          Key: {
-            examId,
-            courseId,
-            UpdateExpression: "SET #attr1 = :val1",
-            ExpressionAttributeNames: {
-              "#attr1": "sessions"
-            },
-            ExpressionAttributeValues: {
-              ":val1": { M: exam.sessions }
-            }
-          },
-        }),
-      )
-
-      if (!examUpdateDB.Attributes) {
-        throw new Response({ statusCode: 400, message: 'Error updating exam sessions', addons: { examId, courseId } })
-      }
-    }
-
     const s3_exam = await s3.send(
       new GetObjectCommand({
         Bucket: examinatorBucket,
@@ -198,12 +152,59 @@ export const joinExam = async (event: APIGatewayProxyEventV2, context: Context):
     )
 
     const examData: ExamS3Item = JSON.parse(await streamToString(s3_exam.Body as Readable))
+    examData.examQuestions = examData.examQuestions.map((question) => ({
+      ...question,
+      correctOptionId: undefined,
+    }))
 
-    // for (const question of examData.examQuestions) {
-    //   delete question.correctOptionId
-    // }
+    // **********
 
-    return new Response({ statusCode: 200, body: { success: true, data: { token: exam.sessions[auth.userId], data: examData } } }).response
+    const examExamUserDB = await dynamo.send(
+      new GetCommand({
+        TableName: ExamUsers,
+        Key: {
+          examId,
+          userId: auth.userId,
+        },
+      }),
+    )
+
+    const examUser = examExamUserDB.Item as ExamUsersTableItem
+
+    if (examUser) {
+      return new Response({ statusCode: 202, body: { success: true, data: { token: examUser.userExamToken, data: examData } } }).response
+    }
+
+    // **********
+
+    const examTokenExp = (exam.duration + exam.startDate) * 1000
+
+    if (examTokenExp < Date.now()) {
+      throw new Response({ statusCode: 400, message: 'Exam token expiration date is in the past', addons: { examTokenExp } })
+    }
+
+    const tokenData: ExamTokenMetaData = {
+      examId,
+      courseId,
+      userId: auth.userId,
+    }
+
+    const userExamToken = sign(tokenData, EXAM_TOKEN_SECRET, { expiresIn: examTokenExp })
+
+    await dynamo.send(
+      new PutCommand({
+        TableName: ExamUsers,
+        Item: {
+          examId,
+          userId: auth.userId,
+          userExamToken,
+        },
+      }),
+    )
+
+    // **********
+
+    return new Response({ statusCode: 200, body: { success: true, data: { token: userExamToken, data: examData } } }).response
   } catch (error) {
     return error instanceof Response ? error.response : new Response({ message: 'Generic Examinator Error', statusCode: 400, addons: { error: error.message } }).response
   }

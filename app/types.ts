@@ -61,7 +61,6 @@ export const examTableItem = z.object({
   createdAt: z.string(),
   createdBy: z.string(),
   questionsMetaData: z.record(z.string(), z.array(z.string())),
-  sessions: z.record(z.string(), z.string()),
 })
 export type ExamTableItem = z.infer<typeof examTableItem>
 
@@ -89,27 +88,17 @@ export type ExamS3Item = z.infer<typeof examS3Item>
 
 // **********  Exam on S3 end **********
 
-// **********  start ExamAnswerTableItem DB **********
+// **********  start ExamUsers DB **********
 
-const examQuestion = z.object({
-  questionId: z.string(),
-  optionsIds: z.array(z.string()),
-})
-
-const userAnswer = z.object({
-  questionId: z.string(),
-  optionId: z.string(),
-})
-
-export const examAnswerTableItem = z.object({
+export const examUsersTableItem = z.object({
   examId: z.string(),
-  examQuestions: z.array(examQuestion),
-  userId: z.string().optional(),
-  userAnswers: z.array(userAnswer).optional(),
+  userId: z.string(),
+  userExamToken: z.string(),
+  userAnswers: z.record(z.string(), z.string()),
 })
-export type ExamAnswerTableItem = z.infer<typeof examAnswerTableItem>
+export type ExamUsersTableItem = z.infer<typeof examUsersTableItem>
 
-// **********  end ExamAnswerTableItem DB **********
+// **********  end ExamUsers DB **********
 
 // **********  Token  **********
 // **********  Token  **********

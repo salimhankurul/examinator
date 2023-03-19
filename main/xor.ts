@@ -98,7 +98,7 @@ export class XorStack extends cdk.Stack {
       tableName: 'ExamsTable',
     })
 
-    const AnswersTable = new Table(this, 'AnswersTable', {
+    const ExamUsers = new Table(this, 'ExamUsers', {
       partitionKey: {
         name: 'examId',
         type: AttributeType.STRING,
@@ -109,7 +109,7 @@ export class XorStack extends cdk.Stack {
       },
       billingMode: BillingMode.PAY_PER_REQUEST,
       stream: StreamViewType.NEW_IMAGE,
-      tableName: 'AnswersTable',
+      tableName: 'ExamUsers',
     })
 
     // *******************************

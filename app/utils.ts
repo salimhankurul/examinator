@@ -1,7 +1,7 @@
 import { Readable } from 'stream'
 
 export const ExamsTable = 'ExamsTable'
-export const answersTable = 'AnswersTable'
+export const ExamUsers = 'ExamUsers'
 export const examinatorBucket = 'examinator-bucket'
 
 export const streamToString = (stream: Readable): Promise<string> => {
