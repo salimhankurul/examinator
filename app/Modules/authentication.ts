@@ -7,9 +7,7 @@ import { createSession, terminateSession } from './authorization'
 import { signInInput, registerInput, signOutInput } from '../models'
 import { ExaminatorResponse, Response } from '../response'
 import { AuthenticationTableItem, UserProfileItem } from '../types'
-
-const AuthenticationTable = 'AuthenticationTable'
-const ProfileTable = 'ProfileTable'
+import { authenticationsTableName, usersTableName } from '../utils'
 
 const client = new DynamoDBClient({})
 
@@ -39,7 +37,7 @@ export const signUp = async (event: APIGatewayProxyEventV2, context: Context): P
 
     const checkExistingUser = await dynamo.send(
       new GetCommand({
-        TableName: AuthenticationTable,
+        TableName: authenticationsTableName,
         Key: {
           email,
         },
@@ -54,7 +52,7 @@ export const signUp = async (event: APIGatewayProxyEventV2, context: Context): P
     // TODO: ConditionExpression: 'attribute_not_exists(examId) OR attribute_not_exists(userId)',
     const authDB = await dynamo.send(
       new PutCommand({
-        TableName: AuthenticationTable,
+        TableName: authenticationsTableName,
         Item: {
           email,
           password: encodePassword(password),
@@ -69,7 +67,7 @@ export const signUp = async (event: APIGatewayProxyEventV2, context: Context): P
 
     const profileDB = await dynamo.send(
       new PutCommand({
-        TableName: ProfileTable,
+        TableName: usersTableName,
         Item: {
           userId: newId,
           userType,
@@ -106,7 +104,7 @@ export const signIn = async (event: APIGatewayProxyEventV2, context: Context): P
 
     const authDB = await dynamo.send(
       new GetCommand({
-        TableName: AuthenticationTable,
+        TableName: authenticationsTableName,
         Key: {
           email,
         },
@@ -121,7 +119,7 @@ export const signIn = async (event: APIGatewayProxyEventV2, context: Context): P
 
     const profileDB = await dynamo.send(
       new GetCommand({
-        TableName: ProfileTable,
+        TableName: usersTableName,
         Key: {
           userId: authInfo.userId,
         },

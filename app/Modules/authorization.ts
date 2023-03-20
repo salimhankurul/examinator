@@ -5,11 +5,11 @@ import { sign, verify as JWTVerify } from 'jsonwebtoken'
 import { APIGatewayProxyEventV2, Context } from 'aws-lambda'
 import { Response, ExaminatorResponse } from '../response'
 import { ValidateTokenResponse, TokenMetaData, SessionTableItem, ExamTokenMetaData } from '../types'
+import { userSessionsTableName } from '../utils'
 
 const { REFRESH_TOKEN_SECRET, ACCESS_TOKEN_SECRET } = process.env
 const ACCESS_TOKEN_TTL = 30000
 const REFRESH_TOKEN_TTL = 60000
-const SESSION_TABLE = 'SessionTable'
 
 const client = new DynamoDBClient({})
 
@@ -60,7 +60,7 @@ export const createSession = async ({ userId, userType }: any, IP: string) => {
 
   await dynamo.send(
     new PutCommand({
-      TableName: SESSION_TABLE,
+      TableName: userSessionsTableName,
       Item: sessionItem,
     }),
   )
@@ -81,7 +81,7 @@ export const terminateSession = async (_token: string, targetUserId: string): Pr
 
   const dynamoReq = await dynamo.send(
     new DeleteCommand({
-      TableName: SESSION_TABLE,
+      TableName: userSessionsTableName,
       Key: {
         userId: targetUserId,
       },
@@ -102,7 +102,7 @@ export const validateSessionToken = async (_token: string, secret: string): Prom
 
   const dynamoReq = await dynamo.send(
     new GetCommand({
-      TableName: SESSION_TABLE,
+      TableName: userSessionsTableName,
       Key: {
         userId: tokenMetaData.userId,
       },

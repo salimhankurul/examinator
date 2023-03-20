@@ -14,10 +14,30 @@ import { HttpLambdaIntegration } from '@aws-cdk/aws-apigatewayv2-integrations-al
 import { Certificate } from 'aws-cdk-lib/aws-certificatemanager'
 import { BlockPublicAccess, Bucket } from 'aws-cdk-lib/aws-s3'
 
-// TODO: remove 'table' from table names
-// TODO: change profile table name to 'users'
+const createExamLambdaName = 'CreateExam'
+const joinExamLambdaName = 'JoinExam'
+const submitToExamLambdaName = 'SubmitToExam'
 
-export class XorStack extends cdk.Stack {
+const getProfileLambdaName = 'GetProfile'
+const updateProfileLambdaName = 'UpdateProfile'
+
+const signUpLambdaName = 'SignUp'
+const signInLambdaName = 'SignIn'
+const signOutLambdaName = 'SignOut'
+
+const refreshTokenLambdaName = 'RefreshToken'
+
+// *******************************
+// *******************************
+
+const bucketName = 'examinator-bucket'
+const authenticationsTableName = 'Authentications'
+const userSessionsTableName = 'UserSessions'
+const usersTableName = 'Users'
+const examsTableName = 'Exams'
+const examSessionsTableName = 'ExamSessions'
+
+export class ExaminatorStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
     super(scope, id, props)
 
@@ -27,8 +47,8 @@ export class XorStack extends cdk.Stack {
     // *******************************
     // *******************************
 
-    const cloudObjectBucket = new Bucket(this, 'COSBucket', {
-      bucketName: 'examinator-bucket',
+    const cloudObjectBucket = new Bucket(this, bucketName, {
+      bucketName: bucketName,
       blockPublicAccess: BlockPublicAccess.BLOCK_ALL,
   })
 
@@ -38,7 +58,7 @@ export class XorStack extends cdk.Stack {
     // *******************************
     // *******************************
 
-    const layer = new LayerVersion(this, 'XorLayer', {
+    const layer = new LayerVersion(this, 'ExaminatorLayer', {
       code: Code.fromAsset(path.join('temp', 'layer.zip'), {
         assetHash: getLayerHash('../app-package.json'),
       }),
@@ -53,27 +73,27 @@ export class XorStack extends cdk.Stack {
     // *******************************
     // *******************************
 
-    const authenticationTable = new Table(this, 'AuthenticationTable', {
+    const authenticationTable = new Table(this, authenticationsTableName, {
       partitionKey: {
         name: 'email',
         type: AttributeType.STRING,
       },
       billingMode: BillingMode.PAY_PER_REQUEST,
       stream: StreamViewType.NEW_IMAGE,
-      tableName: 'AuthenticationTable',
+      tableName: authenticationsTableName,
     })
 
-    const profileTable = new Table(this, 'ProfileTable', {
+    const usersTable = new Table(this, usersTableName, {
       partitionKey: {
         name: 'userId',
         type: AttributeType.STRING,
       },
       billingMode: BillingMode.PAY_PER_REQUEST,
       stream: StreamViewType.NEW_IMAGE,
-      tableName: 'ProfileTable',
+      tableName: usersTableName,
     })
 
-    const SessionTable = new Table(this, 'SessionTable', {
+    const SessionTable = new Table(this, userSessionsTableName, {
       partitionKey: {
         name: 'userId',
         type: AttributeType.STRING,
@@ -81,10 +101,10 @@ export class XorStack extends cdk.Stack {
       billingMode: BillingMode.PAY_PER_REQUEST,
       stream: StreamViewType.NEW_IMAGE,
       timeToLiveAttribute: 'expiresAt',
-      tableName: 'SessionTable',
+      tableName: userSessionsTableName,
     })
 
-    const ExamsTable = new Table(this, 'ExamsTable', {
+    const ExamsTable = new Table(this, examsTableName, {
       partitionKey: {
         name: 'examId',
         type: AttributeType.STRING,
@@ -95,10 +115,10 @@ export class XorStack extends cdk.Stack {
       },
       billingMode: BillingMode.PAY_PER_REQUEST,
       stream: StreamViewType.NEW_IMAGE,
-      tableName: 'ExamsTable',
+      tableName: examsTableName,
     })
 
-    const ExamUsers = new Table(this, 'ExamUsers', {
+    const ExamUsers = new Table(this, examSessionsTableName, {
       partitionKey: {
         name: 'examId',
         type: AttributeType.STRING,
@@ -109,7 +129,7 @@ export class XorStack extends cdk.Stack {
       },
       billingMode: BillingMode.PAY_PER_REQUEST,
       stream: StreamViewType.NEW_IMAGE,
-      tableName: 'ExamUsers',
+      tableName: examSessionsTableName,
     })
 
     // *******************************
@@ -118,7 +138,7 @@ export class XorStack extends cdk.Stack {
     // *******************************
     // *******************************
 
-    const role = new Role(this, 'COSLambdaRole', {
+    const role = new Role(this, 'ExaminatorLambdaRole', {
       assumedBy: new ServicePrincipal('lambda.amazonaws.com'),
     })
 
@@ -151,7 +171,8 @@ export class XorStack extends cdk.Stack {
       },
     })
 
-    const getProfileLambda = new Function(this, 'getProfileLambda', {
+    const getProfileLambda = new Function(this, getProfileLambdaName, {
+      functionName: getProfileLambdaName,
       runtime: Runtime.NODEJS_16_X,
       code: Code.fromAsset('dist'),
       handler: 'Modules/profile.getProfile',
@@ -164,7 +185,8 @@ export class XorStack extends cdk.Stack {
       },
     })
 
-    const updateProfileLambda = new Function(this, 'updateProfileLambda', {
+    const updateProfileLambda = new Function(this, updateProfileLambdaName, {
+      functionName: updateProfileLambdaName,
       runtime: Runtime.NODEJS_16_X,
       code: Code.fromAsset('dist'),
       handler: 'Modules/profile.updateProfile',
@@ -177,7 +199,8 @@ export class XorStack extends cdk.Stack {
       },
     })
 
-    const signUpLambda = new Function(this, 'signUpLambda', {
+    const signUpLambda = new Function(this, signUpLambdaName, {
+      functionName: signUpLambdaName,
       runtime: Runtime.NODEJS_16_X,
       code: Code.fromAsset('dist'),
       handler: 'Modules/authentication.signUp',
@@ -191,7 +214,8 @@ export class XorStack extends cdk.Stack {
       },
     })
 
-    const signInLambda = new Function(this, 'signInLambda', {
+    const signInLambda = new Function(this, signInLambdaName, {
+      functionName: signInLambdaName,
       runtime: Runtime.NODEJS_16_X,
       code: Code.fromAsset('dist'),
       handler: 'Modules/authentication.signIn',
@@ -205,7 +229,8 @@ export class XorStack extends cdk.Stack {
       },
     })
 
-    const signOutLambda = new Function(this, 'signOutLambda', {
+    const signOutLambda = new Function(this, signOutLambdaName, {
+      functionName: signOutLambdaName,
       runtime: Runtime.NODEJS_16_X,
       code: Code.fromAsset('dist'),
       handler: 'Modules/authentication.signOut',
@@ -218,7 +243,8 @@ export class XorStack extends cdk.Stack {
       },
     })
 
-    const refreshLambda = new Function(this, 'refreshLambda', {
+    const refreshLambda = new Function(this, refreshTokenLambdaName, {
+      functionName: refreshTokenLambdaName,
       runtime: Runtime.NODEJS_16_X,
       code: Code.fromAsset('dist'),
       handler: 'Modules/authorization.refreshToken',
@@ -232,7 +258,8 @@ export class XorStack extends cdk.Stack {
       },
     })
 
-    const createExamLambda = new Function(this, 'createExamLambda', {
+    const createExamLambda = new Function(this, createExamLambdaName, {
+      functionName: createExamLambdaName,
       runtime: Runtime.NODEJS_16_X,
       code: Code.fromAsset('dist'),
       handler: 'Modules/exam.createExam',
@@ -245,7 +272,8 @@ export class XorStack extends cdk.Stack {
       },
     })
 
-    const joinExamLambda = new Function(this, 'joinExamLambda', {
+    const joinExamLambda = new Function(this, joinExamLambdaName, {
+      functionName: joinExamLambdaName,
       runtime: Runtime.NODEJS_16_X,
       code: Code.fromAsset('dist'),
       handler: 'Modules/exam.joinExam',
@@ -259,10 +287,11 @@ export class XorStack extends cdk.Stack {
       },
     })
 
-    const submitExamAnswerLambda = new Function(this, 'submitExamAnswer', {
+    const submitExamAnswerLambda = new Function(this, submitToExamLambdaName, {
+      functionName: submitToExamLambdaName,
       runtime: Runtime.NODEJS_16_X,
       code: Code.fromAsset('dist'),
-      handler: 'Modules/exam-answers.submitExamAnswer',
+      handler: 'Modules/exam.submitAnswer',
       architecture: Architecture.ARM_64,
       timeout: Duration.seconds(45),
       role,
@@ -279,7 +308,7 @@ export class XorStack extends cdk.Stack {
     // *******************************
     // *******************************
 
-    const httpApi = new HttpApi(this, 'XorServiceHttpAPI', {
+    const httpApi = new HttpApi(this, 'ExaminatorServiceHttpAPI', {
       description: 'Service Http Api',
       createDefaultStage: true,
     })
@@ -290,7 +319,7 @@ export class XorStack extends cdk.Stack {
     // *******************************
     // *******************************
 
-    new HttpRoute(this, 'XorAPIRouteupdateProfileLambda' + HttpMethod.ANY, {
+    new HttpRoute(this, 'ExaminatorAPIRouteupdateProfileLambda' + HttpMethod.ANY, {
       httpApi,
       routeKey: HttpRouteKey.with('/SET_PROFILE', HttpMethod.ANY),
       integration: new HttpLambdaIntegration('updateProfileLambdanegration', updateProfileLambda, {
@@ -298,7 +327,7 @@ export class XorStack extends cdk.Stack {
       }),
     })
 
-    new HttpRoute(this, 'XorAPIRoutegetProfileLambda' + HttpMethod.ANY, {
+    new HttpRoute(this, 'ExaminatorAPIRoutegetProfileLambda' + HttpMethod.ANY, {
       httpApi,
       routeKey: HttpRouteKey.with('/GET_PROFILE', HttpMethod.ANY),
       integration: new HttpLambdaIntegration('getProfileLambdaanegration', getProfileLambda, {
@@ -306,7 +335,7 @@ export class XorStack extends cdk.Stack {
       }),
     })
 
-    new HttpRoute(this, 'XorAPIRouteSignIn' + HttpMethod.ANY, {
+    new HttpRoute(this, 'ExaminatorAPIRouteSignIn' + HttpMethod.ANY, {
       httpApi,
       routeKey: HttpRouteKey.with('/SIGNIN', HttpMethod.ANY),
       integration: new HttpLambdaIntegration('signInLambdanegration', signInLambda, {
@@ -314,7 +343,7 @@ export class XorStack extends cdk.Stack {
       }),
     })
 
-    new HttpRoute(this, 'XorAPIRoutesignUp' + HttpMethod.ANY, {
+    new HttpRoute(this, 'ExaminatorAPIRoutesignUp' + HttpMethod.ANY, {
       httpApi,
       routeKey: HttpRouteKey.with('/SIGNUP', HttpMethod.ANY),
       integration: new HttpLambdaIntegration('signUpLambdaInegration', signUpLambda, {
@@ -322,7 +351,7 @@ export class XorStack extends cdk.Stack {
       }),
     })
 
-    new HttpRoute(this, 'XorAPIRouteRefresh' + HttpMethod.ANY, {
+    new HttpRoute(this, 'ExaminatorAPIRouteRefresh' + HttpMethod.ANY, {
       httpApi,
       routeKey: HttpRouteKey.with('/REFRESH', HttpMethod.ANY),
       integration: new HttpLambdaIntegration('refreshLambdaInegration', refreshLambda, {
@@ -330,7 +359,7 @@ export class XorStack extends cdk.Stack {
       }),
     })
 
-    new HttpRoute(this, 'XorAPIRouteSignOut' + HttpMethod.ANY, {
+    new HttpRoute(this, 'ExaminatorAPIRouteSignOut' + HttpMethod.ANY, {
       httpApi,
       routeKey: HttpRouteKey.with('/SIGNOUT', HttpMethod.ANY),
       integration: new HttpLambdaIntegration('signOutLambdaInegration', signOutLambda, {
@@ -338,7 +367,7 @@ export class XorStack extends cdk.Stack {
       }),
     })
 
-    new HttpRoute(this, 'XorAPIRouteSubmitExamAnswer' + HttpMethod.ANY, {
+    new HttpRoute(this, 'ExaminatorAPIRouteSubmitExamAnswer' + HttpMethod.ANY, {
       httpApi,
       routeKey: HttpRouteKey.with('/SUBMIT', HttpMethod.ANY),
       integration: new HttpLambdaIntegration('submitExamAnswerLambdaInegration', submitExamAnswerLambda, {
@@ -346,7 +375,7 @@ export class XorStack extends cdk.Stack {
       }),
     })
 
-    new HttpRoute(this, 'XorAPIRouteCreateExamLambda' + HttpMethod.ANY, {
+    new HttpRoute(this, 'ExaminatorAPIRouteCreateExamLambda' + HttpMethod.ANY, {
       httpApi,
       routeKey: HttpRouteKey.with('/CREATE', HttpMethod.ANY),
       integration: new HttpLambdaIntegration('createExamLambdaInegration', createExamLambda, {
@@ -354,7 +383,7 @@ export class XorStack extends cdk.Stack {
       }),
     })
 
-    new HttpRoute(this, 'XorAPIRouteJoinExamLambda' + HttpMethod.ANY, {
+    new HttpRoute(this, 'ExaminatorAPIRouteJoinExamLambda' + HttpMethod.ANY, {
       httpApi,
       routeKey: HttpRouteKey.with('/JOIN', HttpMethod.ANY),
       integration: new HttpLambdaIntegration('joinExamLambdaInegration', joinExamLambda, {
@@ -362,7 +391,7 @@ export class XorStack extends cdk.Stack {
       }),
     })
 
-    new HttpRoute(this, 'XorAPIRouteTest' + HttpMethod.ANY, {
+    new HttpRoute(this, 'ExaminatorAPIRouteTest' + HttpMethod.ANY, {
       httpApi,
       routeKey: HttpRouteKey.with('/TEST', HttpMethod.ANY),
       integration: new HttpLambdaIntegration('testLambdaInegration', testLambda, {
@@ -380,7 +409,7 @@ function getLayerHash(packagePath: string): string {
 }
 
 const app = new cdk.App()
-new XorStack(app, 'XorStack', {
+new ExaminatorStack(app, 'ExaminatorStack', {
   env: { region: 'eu-west-1' }
   /* If you don't specify 'env', this stack will be environment-agnostic.
    * Account/Region-dependent features and context lookups will not work,

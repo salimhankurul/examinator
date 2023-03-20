@@ -1,8 +1,12 @@
 import { Readable } from 'stream'
 
-export const ExamsTable = 'ExamsTable'
-export const ExamUsers = 'ExamUsers'
+
 export const examinatorBucket = 'examinator-bucket'
+export const authenticationsTableName = 'Authentications'
+export const userSessionsTableName = 'UserSessions'
+export const usersTableName = 'Users'
+export const examsTableName = 'Exams'
+export const examSessionsTableName = 'ExamSessions'
 
 export const streamToString = (stream: Readable): Promise<string> => {
   const chunks: any[] = []

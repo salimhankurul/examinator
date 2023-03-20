@@ -1,8 +1,8 @@
 {
-  "name": "xor",
+  "name": "examinator-stack",
   "version": "0.1.0",
   "bin": {
-    "xor": "main/xor.js"
+    "examinator-stack": "main/examinator-stack.js"
   },
   "scripts": {
     "build": "tsc -p ./app/tsconfig.json",

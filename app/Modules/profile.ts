@@ -7,8 +7,7 @@ import { createSession, terminateSession, validateSessionToken } from './authori
 import { updateProfileInput } from '../models'
 import { ExaminatorResponse, Response } from '../response'
 import { UserProfileItem } from '../types'
-
-const ProfileTable = 'ProfileTable'
+import { usersTableName } from '../utils'
 
 const { ACCESS_TOKEN_SECRET } = process.env
 
@@ -33,7 +32,7 @@ export const updateProfile = async (event: APIGatewayProxyEventV2, context: Cont
 
     const oldProfile = await dynamo.send(
       new GetCommand({
-        TableName: ProfileTable,
+        TableName: usersTableName,
         Key: {
           userId: auth.userId,
         },
@@ -54,7 +53,7 @@ export const updateProfile = async (event: APIGatewayProxyEventV2, context: Cont
     // TODO: use update command
     const newProfile = await dynamo.send(
       new PutCommand({
-        TableName: ProfileTable,
+        TableName: usersTableName,
         Item: newProfileItem,
       }),
     )
@@ -81,7 +80,7 @@ export const getProfile = async (event: APIGatewayProxyEventV2, context: Context
 
     const profileDB = await dynamo.send(
       new GetCommand({
-        TableName: ProfileTable,
+        TableName: usersTableName,
         Key: {
           userId: auth.userId,
         },

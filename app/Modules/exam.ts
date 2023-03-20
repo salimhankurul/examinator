@@ -5,11 +5,11 @@ import { PutCommand, GetCommand, DeleteCommand, UpdateCommand } from '@aws-sdk/l
 import { v4 as uuidv4 } from 'uuid'
 import { sign, verify as JWTVerify } from 'jsonwebtoken'
 
-import { validateSessionToken } from './authorization'
+import { validateExamToken, validateSessionToken } from './authorization'
 import { Response, ExaminatorResponse } from '../response'
-import { examinatorBucket, ExamsTable, ExamUsers, nanoid, streamToString } from '../utils'
+import { examinatorBucket, examSessionsTableName, examsTableName, nanoid, streamToString } from '../utils'
 import { ExamS3Item, ExamTableItem, ExamTokenMetaData, ExamUsersTableItem } from '../types'
-import { createExamInput, CreateExamInput, joinExamInput } from '../models'
+import { createExamInput, CreateExamInput, joinExamInput, submitAnswerInput } from '../models'
 import { Readable } from 'stream'
 
 const { ACCESS_TOKEN_SECRET, EXAM_TOKEN_SECRET } = process.env
@@ -98,7 +98,7 @@ export const createExam = async (event: APIGatewayProxyEventV2, context: Context
       ),
       dynamo.send(
         new PutCommand({
-          TableName: ExamsTable,
+          TableName: examsTableName,
           Item: db_exam,
         }),
       ),
@@ -130,7 +130,7 @@ export const joinExam = async (event: APIGatewayProxyEventV2, context: Context):
 
     const examGetDB = await dynamo.send(
       new GetCommand({
-        TableName: ExamsTable,
+        TableName: examsTableName,
         Key: {
           examId,
           courseId,
@@ -161,7 +161,7 @@ export const joinExam = async (event: APIGatewayProxyEventV2, context: Context):
 
     const examExamUserDB = await dynamo.send(
       new GetCommand({
-        TableName: ExamUsers,
+        TableName: examSessionsTableName,
         Key: {
           examId,
           userId: auth.userId,
@@ -193,7 +193,7 @@ export const joinExam = async (event: APIGatewayProxyEventV2, context: Context):
 
     await dynamo.send(
       new PutCommand({
-        TableName: ExamUsers,
+        TableName: examSessionsTableName,
         Item: {
           examId,
           userId: auth.userId,
@@ -238,3 +238,69 @@ export const joinExam = async (event: APIGatewayProxyEventV2, context: Context):
 //     return error instanceof Response ? error.response : new Response({ message: 'Generic Examinator Error', statusCode: 400, addons: { error: error.message } }).response
 //   }
 // }
+
+
+export const submitAnswer = async (event: APIGatewayProxyEventV2, context: Context): Promise<ExaminatorResponse> => {
+  try {
+    if (event.requestContext.http.method === 'OPTIONS') {
+      return new Response({ statusCode: 200, body: {} }).response
+    }
+
+    const accessToken = event.headers['access-token']
+    const examToken = event.headers['exam-token']
+    
+    const auth = await validateSessionToken(accessToken, ACCESS_TOKEN_SECRET)
+
+    // this will handle -> is exam exist & is exam time ended
+    const examAuth = await validateExamToken(examToken, EXAM_TOKEN_SECRET)
+
+    if (examAuth.userId !== auth.userId) {
+      throw new Response({ statusCode: 400, message: 'This exam doesnt belong to this user', addons: { examAuth, auth } })
+    }
+
+    const { questionId, optionId } = submitAnswerInput.parse(JSON.parse(event.body!))
+
+    const examDB = await dynamo.send(
+      new GetCommand({
+        TableName: examsTableName,
+        Key: {
+          examId: examAuth.examId,
+          courseId: examAuth.courseId,
+        },
+      }),
+    )
+    
+    const exam = examDB.Item as ExamTableItem
+    
+    if (!exam) {
+      throw new Response({ statusCode: 400, message: 'This exam doesnt exist !', addons: { examAuth } })
+    }
+
+    if (!exam.questionsMetaData[questionId] || !exam.questionsMetaData[questionId].includes(optionId)) {
+      throw new Response({ statusCode: 400, message: 'This exam doesnt have this question or this question doesnt have this option', addons: { examId: examAuth.examId, questionId, optionId } })
+    }
+
+    // ********************
+
+    const params = {
+      TableName: examSessionsTableName,
+      Key: {
+        examId: examAuth.examId,
+        userId: examAuth.userId,
+      },
+      UpdateExpression: 'SET userAnswers.#k = :v',
+      ExpressionAttributeNames: {
+        '#k': questionId
+      },
+      ExpressionAttributeValues: {
+        ':v': optionId
+      }
+    };
+    
+    await dynamo.send(new UpdateCommand(params))
+
+    return new Response({ statusCode: 200, body: { success: true } }).response
+  } catch (error) {
+    return error instanceof Response ? error.response : new Response({ message: 'Generic Examinator Error', statusCode: 400, addons: { error: error.message } }).response
+  }
+}
