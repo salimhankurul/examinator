@@ -1,5 +1,5 @@
 import crypto from 'crypto'
-import { DynamoDBClient } from '@aws-sdk/client-dynamodb'
+import { ConditionalCheckFailedException, DynamoDBClient } from '@aws-sdk/client-dynamodb'
 import { DynamoDBDocumentClient, PutCommand, GetCommand, DeleteCommand } from '@aws-sdk/lib-dynamodb'
 import { APIGatewayProxyEventV2, Context } from 'aws-lambda'
 import { v4 as uuidv4 } from 'uuid'
@@ -35,34 +35,27 @@ export const signUp = async (event: APIGatewayProxyEventV2, context: Context): P
 
     const { email, password, userType } = _input.data
 
-    const checkExistingUser = await dynamo.send(
-      new GetCommand({
-        TableName: authenticationsTableName,
-        Key: {
-          email,
-        },
-      }),
-    )
-
-    if (checkExistingUser.Item) {
-      throw new Response({ statusCode: 400, message: 'User with this email already exists !', addons: { email } })
-    }
     const newId = uuidv4().replace(/-/g, '')
 
-    // TODO: ConditionExpression: 'attribute_not_exists(examId) OR attribute_not_exists(userId)',
-    const authDB = await dynamo.send(
-      new PutCommand({
-        TableName: authenticationsTableName,
-        Item: {
-          email,
-          password: encodePassword(password),
-          userId: newId,
-        } as AuthenticationTableItem,
-      }),
-    )
-
-    if (authDB.$metadata.httpStatusCode !== 200) {
-      throw new Response({ statusCode: 400, message: 'Database Error, please contact admin !', addons: { error: authDB } })
+    try {
+      const Item: AuthenticationTableItem = {
+        email,
+        password: encodePassword(password),
+        userId: newId,
+      }
+      await dynamo.send(
+        new PutCommand({
+          TableName: authenticationsTableName,
+          Item,
+          ConditionExpression: 'attribute_not_exists(email)',
+        }),
+      )
+    } catch (error) {
+      if (error instanceof ConditionalCheckFailedException) {
+        throw new Response({ statusCode: 400, message: 'User with this email already exists !', addons: { email } })
+      } else {  
+        throw new Response({ statusCode: 400, message: 'Database Error, please contact admin !', addons: { error } })
+      }
     }
 
     const profileDB = await dynamo.send(
@@ -134,7 +127,7 @@ export const signIn = async (event: APIGatewayProxyEventV2, context: Context): P
 
     const session = await createSession({ userId: profileInfo.userId, userType: profileInfo.userType }, event.requestContext.http.sourceIp)
 
-    return new Response({ statusCode: 200, body: session }).response
+    return new Response({ statusCode: 200, body: { session, profile: profileInfo} }).response
   } catch (error) {
     return error instanceof Response ? error.response : new Response({ statusCode: 400, message: 'Generic Examinator Error', addons: { error: error.message } }).response
   }

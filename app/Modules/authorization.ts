@@ -1,7 +1,7 @@
 import crypto from 'crypto'
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb'
 import { DynamoDBDocumentClient, PutCommand, GetCommand, DeleteCommand } from '@aws-sdk/lib-dynamodb'
-import { sign, verify as JWTVerify } from 'jsonwebtoken'
+import { sign, verify } from 'jsonwebtoken'
 import { APIGatewayProxyEventV2, Context } from 'aws-lambda'
 import { Response, ExaminatorResponse } from '../response'
 import { ValidateTokenResponse, TokenMetaData, SessionTableItem, ExamTokenMetaData } from '../types'
@@ -14,26 +14,6 @@ const REFRESH_TOKEN_TTL = 60000
 const client = new DynamoDBClient({})
 
 const dynamo = DynamoDBDocumentClient.from(client)
-
-// *******************************
-// *******************************
-// *********** TOKEN *************
-// *******************************
-// *******************************
-// TODO: getrid of thiss
-export const verifyToken = (token: string, secret: string): ValidateTokenResponse => {
-  try {
-    if (!secret || !token) {
-      throw new Response({ statusCode: 403, message: 'There has been problem whit your token', addons: { errorCode: 0xff897 } })
-    }
-
-    return { tokenMetaData: JWTVerify(token, secret) as TokenMetaData }
-  } catch (error) {
-    return {
-      error: error.message,
-    }
-  }
-}
 
 // *******************************
 // *******************************
@@ -69,10 +49,11 @@ export const createSession = async ({ userId, userType }: any, IP: string) => {
 }
 
 export const terminateSession = async (_token: string, targetUserId: string): Promise<void> => {
-  const { tokenMetaData, error } = verifyToken(_token, ACCESS_TOKEN_SECRET)
-
-  if (error) {
-    throw new Response({ statusCode: 403, message: 'There has been a problem while authorizing your token.', addons: { tokenError: error } })
+  let tokenMetaData: TokenMetaData
+  try {
+    tokenMetaData = verify(_token, ACCESS_TOKEN_SECRET) as TokenMetaData
+  } catch (error) {
+      throw new Response({ statusCode: 403, message: 'There has been a problem while authorizing your token.', addons: { tokenError: error.message } })
   }
 
   if (tokenMetaData.userId !== targetUserId && tokenMetaData.userType !== 'admin') {
@@ -94,10 +75,11 @@ export const terminateSession = async (_token: string, targetUserId: string): Pr
 }
 
 export const validateSessionToken = async (_token: string, secret: string): Promise<TokenMetaData> => {
-  const { tokenMetaData, error } = verifyToken(_token, secret)
-
-  if (error) {
-    throw new Response({ statusCode: 403, message: 'There has been a problem while authorizing your token.', addons: { tokenError: error } })
+  let tokenMetaData: TokenMetaData
+  try {
+    tokenMetaData = verify(_token, secret) as TokenMetaData
+  } catch (error) {
+      throw new Response({ statusCode: 403, message: 'There has been a problem while authorizing your token.', addons: { tokenError: error.message } })
   }
 
   const dynamoReq = await dynamo.send(
@@ -120,12 +102,8 @@ export const validateSessionToken = async (_token: string, secret: string): Prom
 
 
 export const validateExamToken = async (_token: string, secret: string): Promise<ExamTokenMetaData> => {
-  if (!secret || !_token) {
-    throw new Response({ statusCode: 403, message: 'There is a problem whit existance of your exam token', addons: { one: _token ? 1 : 0, two: secret ? 1 : 0 } })
-  }
-
   try {
-    return JWTVerify(_token, secret) as ExamTokenMetaData
+    return verify(_token, secret) as ExamTokenMetaData
   } catch (error) {
       throw new Response({ statusCode: 403, message: 'There has been a problem while authorizing your exam token.', addons: { tokenError: error.message } })
   }

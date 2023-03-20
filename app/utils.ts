@@ -1,6 +1,5 @@
 import { Readable } from 'stream'
 
-
 export const examinatorBucket = 'examinator-bucket'
 export const authenticationsTableName = 'Authentications'
 export const userSessionsTableName = 'UserSessions'

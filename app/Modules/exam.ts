@@ -211,35 +211,6 @@ export const joinExam = async (event: APIGatewayProxyEventV2, context: Context):
   }
 }
 
-// export const deleteExam = async (event: APIGatewayProxyEventV2, context: Context): Promise<ExaminatorResponse> => {
-//   try {
-//     if (event.requestContext.http.method === 'OPTIONS') {
-//       return new Response({ statusCode: 200, body: {} }).response
-//     }
-
-//     const _token = event.headers['access-token']
-
-//     const auth = await validateSessionToken(_token, ACCESS_TOKEN_SECRET)
-//     const examId = event.pathParameters?.examId
-
-//     if (!examId) {
-//       throw new Response({ message: 'Missing Exam ID', statusCode: 400 })
-//     }
-
-//     await s3.send(
-//       new DeleteObjectCommand({
-//         Bucket: bucketName,
-//         Key: `${examId}.json`,
-//       })
-//     )
-
-//     return new Response({ statusCode: 200, body: { success: true } }).response
-//   } catch (error) {
-//     return error instanceof Response ? error.response : new Response({ message: 'Generic Examinator Error', statusCode: 400, addons: { error: error.message } }).response
-//   }
-// }
-
-
 export const submitAnswer = async (event: APIGatewayProxyEventV2, context: Context): Promise<ExaminatorResponse> => {
   try {
     if (event.requestContext.http.method === 'OPTIONS') {

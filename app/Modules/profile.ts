@@ -50,11 +50,11 @@ export const updateProfile = async (event: APIGatewayProxyEventV2, context: Cont
       ..._input.data,
     }
 
-    // TODO: use update command
     const newProfile = await dynamo.send(
       new PutCommand({
         TableName: usersTableName,
         Item: newProfileItem,
+        ConditionExpression: 'attribute_exists(userId)',
       }),
     )
 
@@ -62,7 +62,7 @@ export const updateProfile = async (event: APIGatewayProxyEventV2, context: Cont
       throw new Response({ statusCode: 400, message: 'Database PUT Error, please contact admin !', addons: { error: newProfile } })
     }
 
-    return new Response({ statusCode: 200, body: { success: true, newProfile } }).response
+    return new Response({ statusCode: 200, body: { success: true, profile: newProfileItem } }).response
   } catch (error) {
     return error instanceof Response ? error.response : new Response({ message: 'Generic Examinator Error', statusCode: 400, addons: { error: error.message } }).response
   }
@@ -89,7 +89,11 @@ export const getProfile = async (event: APIGatewayProxyEventV2, context: Context
 
     const data: UserProfileItem = profileDB.Item as UserProfileItem
 
-    return new Response({ statusCode: 200, body: { success: true, data } }).response
+    if (!data) {
+      throw new Response({ statusCode: 404, message: 'Couldnt find any user with this id', addons: { userId: auth.userId } })
+    }
+
+    return new Response({ statusCode: 200, body: { success: true, profile: data } }).response
   } catch (error) {
     return error instanceof Response ? error.response : new Response({ message: 'Generic Examinator Error', statusCode: 400, addons: { error: error.message } }).response
   }
