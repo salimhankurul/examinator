@@ -2,15 +2,25 @@ import { z } from 'zod'
 
 export const userType = z.enum(['admin', 'teacher', 'student'])
 
-export const course = z.object({
-  label: z.string(),
-  value: z.string(),
-})
-export type Course = z.infer<typeof course>
+// **********  Courses  **********
+// **********  Courses  **********
+// **********  Courses  **********
 
-// **********  DB  **********
-// **********  DB  **********
-// **********  DB  **********
+export const courses = [
+  { id: 'COME125', name: 'Introduction to Computer Science' },
+  { id: 'COME225', name: 'Data Structures and Algorithms' },
+  { id: 'COME325', name: 'Computer Networks' },
+  { id: 'COME425', name: 'Database Systems' },
+  { id: 'COME525', name: 'Operating Systems' },
+  { id: 'COME625', name: 'Software Engineering' },
+  { id: 'COME725', name: 'Artificial Intelligence' },
+  { id: 'COME825', name: 'Computer Graphics' },
+  { id: 'COME925', name: 'Computer Architecture' },
+  { id: 'COME1025', name: 'Programming Languages' },
+];
+// **********  Authentication  **********
+// **********  Authentication  **********
+// **********  Authentication  **********
 
 export const authenticationTableItem = z.object({
   email: z.string().email(),
@@ -19,15 +29,26 @@ export const authenticationTableItem = z.object({
 })
 export type AuthenticationTableItem = z.infer<typeof authenticationTableItem>
 
-export const userProfileItem = z.object({
+// **********  Users  **********
+// **********  Users  **********
+// **********  Users  **********
+
+export const usersTableItem = z.object({
   userId: z.string(),
   userType: userType,
   email: z.string().email(),
   firstName: z.string(),
   lastName: z.string(),
-  courses: z.array(course),
+  courses: z.array(z.object({
+    id: z.string(),
+    name: z.string(),
+  })),
 })
-export type UserProfileItem = z.infer<typeof userProfileItem>
+export type UsersTableItem = z.infer<typeof usersTableItem>
+
+// **********  UserSession  **********
+// **********  UserSession  **********
+// **********  UserSession  **********
 
 export const sessionTableItem = z.object({
   userId: z.string(),
@@ -37,9 +58,9 @@ export const sessionTableItem = z.object({
 })
 export type SessionTableItem = z.infer<typeof sessionTableItem>
 
-// **********  Exam  **********
-// **********  Exam  **********
-// **********  Exam  **********
+// **********  Exam Token **********
+// **********  Exam Token **********
+// **********  Exam Token **********
 
 export interface ExamTokenMetaData {
   examId: string
@@ -47,14 +68,16 @@ export interface ExamTokenMetaData {
   userId: string
 }
 
-// **********  Exam on DB start  **********
+// **********  Exam DB **********
+// **********  Exam DB **********
+// **********  Exam DB **********
 
 export const examTableItem = z.object({
   examId: z.string(),
-  name: z.string(),
-  description: z.string(),
-  courseName: z.string(),
   courseId: z.string(),
+  name: z.string(),
+  courseName: z.string(),
+  description: z.string(),
   minimumPassingScore: z.number(),
   startDate: z.number(),
   duration: z.number(),
@@ -64,9 +87,9 @@ export const examTableItem = z.object({
 })
 export type ExamTableItem = z.infer<typeof examTableItem>
 
-// **********  Exam on DB end  **********
-
-// **********  Exam on S3 start **********
+// **********  Exam S3 **********
+// **********  Exam S3 **********
+// **********  Exam S3 **********
 
 export const examOption = z.object({
   optionId: z.string(),
@@ -86,19 +109,17 @@ export const examS3Item = z.object({
 })
 export type ExamS3Item = z.infer<typeof examS3Item>
 
-// **********  Exam on S3 end **********
+// **********  ExamSession  **********
+// **********  ExamSession  **********
+// **********  ExamSession  **********
 
-// **********  start ExamUsers DB **********
-
-export const examUsersTableItem = z.object({
+export const examSessionTableItem = z.object({
   examId: z.string(),
   userId: z.string(),
   userExamToken: z.string(),
   userAnswers: z.record(z.string(), z.string()),
 })
-export type ExamUsersTableItem = z.infer<typeof examUsersTableItem>
-
-// **********  end ExamUsers DB **********
+export type ExamSessionTableItem = z.infer<typeof examSessionTableItem>
 
 // **********  Token  **********
 // **********  Token  **********
@@ -112,11 +133,3 @@ export const tokenMetaData = z.object({
   exp: z.number(),
 })
 export type TokenMetaData = z.infer<typeof tokenMetaData>
-
-export const validateTokenResponse = z
-  .object({
-    tokenMetaData,
-    error: z.string(),
-  })
-  .partial()
-export type ValidateTokenResponse = z.infer<typeof validateTokenResponse>

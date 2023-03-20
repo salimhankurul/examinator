@@ -7,8 +7,8 @@ import { sign, verify as JWTVerify } from 'jsonwebtoken'
 
 import { validateExamToken, validateSessionToken } from './authorization'
 import { Response, ExaminatorResponse } from '../response'
-import { examinatorBucket, examSessionsTableName, examsTableName, nanoid, streamToString } from '../utils'
-import { ExamS3Item, ExamTableItem, ExamTokenMetaData, ExamUsersTableItem } from '../types'
+import { examinatorBucket, examSessionsTableName, examsTableName, nanoid, streamToString, usersTableName } from '../utils'
+import { ExamS3Item, ExamTableItem, ExamTokenMetaData, ExamSessionTableItem, courses, UsersTableItem } from '../types'
 import { createExamInput, CreateExamInput, joinExamInput, submitAnswerInput } from '../models'
 import { Readable } from 'stream'
 
@@ -18,8 +18,6 @@ const s3 = new S3Client({})
 
 const dynamo = new DynamoDBClient({})
 
-// TODO valite course exists
-// TODO validate user is teacher or admin
 export const createExam = async (event: APIGatewayProxyEventV2, context: Context): Promise<ExaminatorResponse> => {
   try {
     if (event.requestContext.http.method === 'OPTIONS') {
@@ -29,7 +27,19 @@ export const createExam = async (event: APIGatewayProxyEventV2, context: Context
     const _token = event.headers['access-token']
     const auth = await validateSessionToken(_token, ACCESS_TOKEN_SECRET)
 
+    if (auth.userType !== 'teacher' && auth.userType !== 'admin') {
+      throw new Response({ statusCode: 403, message: 'You are not allowed to create exams !' })
+    }
+
     const inputExam: CreateExamInput = createExamInput.parse(JSON.parse(event.body!))
+
+    if (!courses.find((course) => course.id === inputExam.courseId)) {
+      throw new Response({ statusCode: 400, message: 'Invalid Course ID !' })
+    }
+
+    if (!courses.find((course) => course.name === inputExam.courseName)) {
+      throw new Response({ statusCode: 400, message: 'Invalid Course Name !' })
+    }
 
     // generate exam id
     const examId: string = uuidv4()
@@ -116,7 +126,7 @@ export const createExam = async (event: APIGatewayProxyEventV2, context: Context
   }
 }
 
-// TODO: validate user can join this exam
+// TODO: add exam list to user table
 export const joinExam = async (event: APIGatewayProxyEventV2, context: Context): Promise<ExaminatorResponse> => {
   try {
     if (event.requestContext.http.method === 'OPTIONS') {
@@ -127,6 +137,25 @@ export const joinExam = async (event: APIGatewayProxyEventV2, context: Context):
     const auth = await validateSessionToken(_token, ACCESS_TOKEN_SECRET)
 
     const { examId, courseId } = joinExamInput.parse(JSON.parse(event.body!))
+
+    const _user = await dynamo.send(
+      new GetCommand({
+        TableName: usersTableName,
+        Key: {
+          userId: auth.userId,
+        },
+      }),
+    )
+
+    const user = _user.Item as UsersTableItem
+
+    if (!user) {
+      throw new Response({ statusCode: 404, message: 'Couldnt find any user with this id', addons: { userId: auth.userId } })
+    }
+
+    if (!user.courses.find((course) => course.id === courseId)) {
+      throw new Response({ statusCode: 400, message: 'You are not enrolled in this course !' })
+    }
 
     const examGetDB = await dynamo.send(
       new GetCommand({
@@ -159,7 +188,7 @@ export const joinExam = async (event: APIGatewayProxyEventV2, context: Context):
 
     // **********
 
-    const examExamUserDB = await dynamo.send(
+    const _examSession = await dynamo.send(
       new GetCommand({
         TableName: examSessionsTableName,
         Key: {
@@ -169,10 +198,10 @@ export const joinExam = async (event: APIGatewayProxyEventV2, context: Context):
       }),
     )
 
-    const examUser = examExamUserDB.Item as ExamUsersTableItem
+    const examSession = _examSession.Item as ExamSessionTableItem
 
-    if (examUser) {
-      return new Response({ statusCode: 202, body: { success: true, data: { token: examUser.userExamToken, data: examData } } }).response
+    if (examSession) {
+      return new Response({ statusCode: 202, body: { success: true, data: { token: examSession.userExamToken, data: examData } } }).response
     }
 
     // **********

@@ -6,7 +6,7 @@ import { v4 as uuidv4 } from 'uuid'
 import { createSession, terminateSession, validateSessionToken } from './authorization'
 import { updateProfileInput } from '../models'
 import { ExaminatorResponse, Response } from '../response'
-import { UserProfileItem } from '../types'
+import { UsersTableItem } from '../types'
 import { usersTableName } from '../utils'
 
 const { ACCESS_TOKEN_SECRET } = process.env
@@ -30,7 +30,7 @@ export const updateProfile = async (event: APIGatewayProxyEventV2, context: Cont
 
     const auth = await validateSessionToken(_token, ACCESS_TOKEN_SECRET)
 
-    const oldProfile = await dynamo.send(
+    const _oldUser = await dynamo.send(
       new GetCommand({
         TableName: usersTableName,
         Key: {
@@ -39,14 +39,14 @@ export const updateProfile = async (event: APIGatewayProxyEventV2, context: Cont
       }),
     )
 
-    const profileInfo: UserProfileItem = oldProfile.Item as UserProfileItem
+    const oldUser = _oldUser.Item as UsersTableItem
 
-    if (!profileInfo) {
+    if (!oldUser) {
       throw new Response({ statusCode: 404, message: 'Database GET error, please contact admin !' })
     }
 
-    const newProfileItem: UserProfileItem = {
-      ...profileInfo,
+    const newProfileItem: UsersTableItem = {
+      ...oldUser,
       ..._input.data,
     }
 
@@ -78,7 +78,7 @@ export const getProfile = async (event: APIGatewayProxyEventV2, context: Context
 
     const auth = await validateSessionToken(_token, ACCESS_TOKEN_SECRET)
 
-    const profileDB = await dynamo.send(
+    const _user = await dynamo.send(
       new GetCommand({
         TableName: usersTableName,
         Key: {
@@ -87,13 +87,13 @@ export const getProfile = async (event: APIGatewayProxyEventV2, context: Context
       }),
     )
 
-    const data: UserProfileItem = profileDB.Item as UserProfileItem
+    const user = _user.Item as UsersTableItem
 
-    if (!data) {
+    if (!user) {
       throw new Response({ statusCode: 404, message: 'Couldnt find any user with this id', addons: { userId: auth.userId } })
     }
 
-    return new Response({ statusCode: 200, body: { success: true, profile: data } }).response
+    return new Response({ statusCode: 200, body: { success: true, profile: user } }).response
   } catch (error) {
     return error instanceof Response ? error.response : new Response({ message: 'Generic Examinator Error', statusCode: 400, addons: { error: error.message } }).response
   }

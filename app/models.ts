@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { userType, examsQuestion, course } from './types'
+import { userType, examsQuestion } from './types'
 
 export const registerInput = z.object({
   email: z.string().email(),
@@ -20,7 +20,14 @@ export const updateProfileInput = z.object({
   firstName: z.string().min(1).optional(),
   lastName: z.string().min(1).optional(),
   email: z.string().email().optional(),
-  courses: z.array(course).optional(),
+  courses: z
+    .array(
+      z.object({
+        id: z.string(),
+        name: z.string(),
+      }),
+    )
+    .optional(),
 })
 
 const examQuestionInput = z.object({
@@ -29,7 +36,7 @@ const examQuestionInput = z.object({
     z.object({
       optionText: z.string(),
       isCorrect: z.boolean().optional(),
-    })
+    }),
   ),
 })
 

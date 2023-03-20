@@ -6,7 +6,7 @@ import { v4 as uuidv4 } from 'uuid'
 import { createSession, terminateSession } from './authorization'
 import { signInInput, registerInput, signOutInput } from '../models'
 import { ExaminatorResponse, Response } from '../response'
-import { AuthenticationTableItem, UserProfileItem } from '../types'
+import { AuthenticationTableItem, UsersTableItem } from '../types'
 import { authenticationsTableName, usersTableName } from '../utils'
 
 const client = new DynamoDBClient({})
@@ -110,7 +110,7 @@ export const signIn = async (event: APIGatewayProxyEventV2, context: Context): P
       throw new Response({ statusCode: 400, message: 'User with this email does not exist or Incorrect password !' })
     }
 
-    const profileDB = await dynamo.send(
+    const _user = await dynamo.send(
       new GetCommand({
         TableName: usersTableName,
         Key: {
@@ -119,15 +119,15 @@ export const signIn = async (event: APIGatewayProxyEventV2, context: Context): P
       }),
     )
 
-    const profileInfo = profileDB.Item as UserProfileItem
+    const user = _user.Item as UsersTableItem
 
-    if (!profileInfo) {
+    if (!user) {
       throw new Response({ statusCode: 400, message: 'Error accured while trying to find user profile' })
     }
 
-    const session = await createSession({ userId: profileInfo.userId, userType: profileInfo.userType }, event.requestContext.http.sourceIp)
+    const session = await createSession({ userId: user.userId, userType: user.userType }, event.requestContext.http.sourceIp)
 
-    return new Response({ statusCode: 200, body: { session, profile: profileInfo} }).response
+    return new Response({ statusCode: 200, body: { session, profile: user } }).response
   } catch (error) {
     return error instanceof Response ? error.response : new Response({ statusCode: 400, message: 'Generic Examinator Error', addons: { error: error.message } }).response
   }

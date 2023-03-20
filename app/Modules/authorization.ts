@@ -4,7 +4,7 @@ import { DynamoDBDocumentClient, PutCommand, GetCommand, DeleteCommand } from '@
 import { sign, verify } from 'jsonwebtoken'
 import { APIGatewayProxyEventV2, Context } from 'aws-lambda'
 import { Response, ExaminatorResponse } from '../response'
-import { ValidateTokenResponse, TokenMetaData, SessionTableItem, ExamTokenMetaData } from '../types'
+import { TokenMetaData, SessionTableItem, ExamTokenMetaData } from '../types'
 import { userSessionsTableName } from '../utils'
 
 const { REFRESH_TOKEN_SECRET, ACCESS_TOKEN_SECRET } = process.env
