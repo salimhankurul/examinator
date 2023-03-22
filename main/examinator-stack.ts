@@ -13,13 +13,16 @@ import { DomainName, HttpApi, HttpMethod, HttpRoute, HttpRouteKey, PayloadFormat
 import { HttpLambdaIntegration } from '@aws-cdk/aws-apigatewayv2-integrations-alpha'
 import { Certificate } from 'aws-cdk-lib/aws-certificatemanager'
 import { BlockPublicAccess, Bucket } from 'aws-cdk-lib/aws-s3'
+import { StateMachine, Wait, WaitTime } from 'aws-cdk-lib/aws-stepfunctions'
+import { LambdaInvoke } from 'aws-cdk-lib/aws-stepfunctions-tasks'
 
 const createExamLambdaName = 'CreateExam'
 const joinExamLambdaName = 'JoinExam'
+const finishExamLambdaName = 'FinishExam'
 const submitToExamLambdaName = 'SubmitToExam'
 
-const getProfileLambdaName = 'GetProfile'
-const updateProfileLambdaName = 'UpdateProfile'
+const getUserLambdaName = 'GetUser'
+const updateUserLambdaName = 'UpdateUser'
 
 const signUpLambdaName = 'SignUp'
 const signInLambdaName = 'SignIn'
@@ -50,7 +53,7 @@ export class ExaminatorStack extends cdk.Stack {
     const cloudObjectBucket = new Bucket(this, bucketName, {
       bucketName: bucketName,
       blockPublicAccess: BlockPublicAccess.BLOCK_ALL,
-  })
+    })
 
     // *******************************
     // *******************************
@@ -83,7 +86,7 @@ export class ExaminatorStack extends cdk.Stack {
       tableName: authenticationsTableName,
     })
 
-    const usersTable = new Table(this, usersTableName, {
+    const Users = new Table(this, usersTableName, {
       partitionKey: {
         name: 'userId',
         type: AttributeType.STRING,
@@ -93,7 +96,7 @@ export class ExaminatorStack extends cdk.Stack {
       tableName: usersTableName,
     })
 
-    const SessionTable = new Table(this, userSessionsTableName, {
+    const Sessions = new Table(this, userSessionsTableName, {
       partitionKey: {
         name: 'userId',
         type: AttributeType.STRING,
@@ -104,7 +107,7 @@ export class ExaminatorStack extends cdk.Stack {
       tableName: userSessionsTableName,
     })
 
-    const ExamsTable = new Table(this, examsTableName, {
+    const Exams = new Table(this, examsTableName, {
       partitionKey: {
         name: 'examId',
         type: AttributeType.STRING,
@@ -118,7 +121,7 @@ export class ExaminatorStack extends cdk.Stack {
       tableName: examsTableName,
     })
 
-    const ExamUsers = new Table(this, examSessionsTableName, {
+    const ExamSessions = new Table(this, examSessionsTableName, {
       partitionKey: {
         name: 'examId',
         type: AttributeType.STRING,
@@ -147,7 +150,7 @@ export class ExaminatorStack extends cdk.Stack {
         new PolicyStatement({
           effect: Effect.ALLOW,
           resources: ['*'],
-          actions: ['dynamodb:*', 'logs:*', 'events:*', 'lambda:*', 's3:*', 'cloudwatch:*', 'iam:*', 'cloudfront:*'],
+          actions: ['dynamodb:*', 'logs:*', 'events:*', 'lambda:*', 's3:*', 'cloudwatch:*', 'iam:*', 'cloudfront:*', 'states:*', 'apigateway:*', 'apigatewayv2:*', 'secretsmanager:*', 'sns:*', 'sqs:*', 'ssm:*'],
         }),
       )
     }
@@ -157,6 +160,35 @@ export class ExaminatorStack extends cdk.Stack {
     // ***** LAMBDA HANDLERS  ********
     // *******************************
     // *******************************
+
+    const finishExamLambda = new Function(this, finishExamLambdaName, {
+      functionName: finishExamLambdaName,
+      runtime: Runtime.NODEJS_16_X,
+      code: Code.fromAsset('dist'),
+      handler: 'Modules/exam.finishExam',
+      architecture: Architecture.ARM_64,
+      timeout: Duration.minutes(5),
+      role,
+      layers: [layer],
+      environment: {
+        FINISH_EXAM_TOKEN_SECRET: 'FINISH_EXAM_TOKEN_SECRET',
+      },
+    })
+
+    const finisherInvoker = new LambdaInvoke(this, 'LongScheduleLambdaInvoke', {
+      lambdaFunction: finishExamLambda,
+    })
+
+    const finisherWait =  new Wait(this, 'Wait Until executeAt', {
+      time: WaitTime.timestampPath('$.executeAt'),
+    })
+    
+    const finisherDef = finisherWait.next(finisherInvoker)
+
+    const finisher = new StateMachine(this, 'FinishExamMachine', {
+      definition: finisherDef,
+      stateMachineName: 'FinishExamMachine',
+    })
 
     const testLambda = new Function(this, 'testLambda', {
       runtime: Runtime.NODEJS_16_X,
@@ -171,11 +203,11 @@ export class ExaminatorStack extends cdk.Stack {
       },
     })
 
-    const getProfileLambda = new Function(this, getProfileLambdaName, {
-      functionName: getProfileLambdaName,
+    const getUserLambda = new Function(this, getUserLambdaName, {
+      functionName: getUserLambdaName,
       runtime: Runtime.NODEJS_16_X,
       code: Code.fromAsset('dist'),
-      handler: 'Modules/profile.getProfile',
+      handler: 'Modules/user.getUser',
       architecture: Architecture.ARM_64,
       timeout: Duration.minutes(5),
       role,
@@ -185,11 +217,11 @@ export class ExaminatorStack extends cdk.Stack {
       },
     })
 
-    const updateProfileLambda = new Function(this, updateProfileLambdaName, {
-      functionName: updateProfileLambdaName,
+    const updateUserLambda = new Function(this, updateUserLambdaName, {
+      functionName: updateUserLambdaName,
       runtime: Runtime.NODEJS_16_X,
       code: Code.fromAsset('dist'),
-      handler: 'Modules/profile.updateProfile',
+      handler: 'Modules/user.updateUser',
       architecture: Architecture.ARM_64,
       timeout: Duration.minutes(5),
       role,
@@ -269,6 +301,8 @@ export class ExaminatorStack extends cdk.Stack {
       layers: [layer],
       environment: {
         ACCESS_TOKEN_SECRET: 'ACCESS_TOKEN_SECRET',
+        FINISH_EXAM_TOKEN_SECRET: 'FINISH_EXAM_TOKEN_SECRET',
+        FINISHER_MACHINE_ARN: finisher.stateMachineArn,
       },
     })
 
@@ -283,7 +317,6 @@ export class ExaminatorStack extends cdk.Stack {
       layers: [layer],
       environment: {
         ACCESS_TOKEN_SECRET: 'ACCESS_TOKEN_SECRET',
-        EXAM_TOKEN_SECRET: 'EXAM_TOKEN_SECRET',
       },
     })
 
@@ -291,14 +324,13 @@ export class ExaminatorStack extends cdk.Stack {
       functionName: submitToExamLambdaName,
       runtime: Runtime.NODEJS_16_X,
       code: Code.fromAsset('dist'),
-      handler: 'Modules/exam.submitAnswer',
+      handler: 'Modules/exam.submitToExam',
       architecture: Architecture.ARM_64,
       timeout: Duration.seconds(45),
       role,
       layers: [layer],
       environment: {
         ACCESS_TOKEN_SECRET: 'ACCESS_TOKEN_SECRET',
-        EXAM_TOKEN_SECRET: 'EXAM_TOKEN_SECRET',
       },
     })
 
@@ -319,18 +351,18 @@ export class ExaminatorStack extends cdk.Stack {
     // *******************************
     // *******************************
 
-    new HttpRoute(this, 'ExaminatorAPIRouteupdateProfileLambda' + HttpMethod.ANY, {
+    new HttpRoute(this, 'ExaminatorAPIRouteupdateUserLambda' + HttpMethod.ANY, {
       httpApi,
-      routeKey: HttpRouteKey.with('/SET_PROFILE', HttpMethod.ANY),
-      integration: new HttpLambdaIntegration('updateProfileLambdanegration', updateProfileLambda, {
+      routeKey: HttpRouteKey.with('/SET_USER', HttpMethod.ANY),
+      integration: new HttpLambdaIntegration('updateUserLambdanegration', updateUserLambda, {
         payloadFormatVersion: PayloadFormatVersion.custom('2.0'),
       }),
     })
 
-    new HttpRoute(this, 'ExaminatorAPIRoutegetProfileLambda' + HttpMethod.ANY, {
+    new HttpRoute(this, 'ExaminatorAPIRoutegetUserLambda' + HttpMethod.ANY, {
       httpApi,
-      routeKey: HttpRouteKey.with('/GET_PROFILE', HttpMethod.ANY),
-      integration: new HttpLambdaIntegration('getProfileLambdaanegration', getProfileLambda, {
+      routeKey: HttpRouteKey.with('/GET_USER', HttpMethod.ANY),
+      integration: new HttpLambdaIntegration('getUserLambdaanegration', getUserLambda, {
         payloadFormatVersion: PayloadFormatVersion.custom('2.0'),
       }),
     })
@@ -367,14 +399,6 @@ export class ExaminatorStack extends cdk.Stack {
       }),
     })
 
-    new HttpRoute(this, 'ExaminatorAPIRouteSubmitExamAnswer' + HttpMethod.ANY, {
-      httpApi,
-      routeKey: HttpRouteKey.with('/SUBMIT', HttpMethod.ANY),
-      integration: new HttpLambdaIntegration('submitExamAnswerLambdaInegration', submitExamAnswerLambda, {
-        payloadFormatVersion: PayloadFormatVersion.custom('2.0'),
-      }),
-    })
-
     new HttpRoute(this, 'ExaminatorAPIRouteCreateExamLambda' + HttpMethod.ANY, {
       httpApi,
       routeKey: HttpRouteKey.with('/CREATE', HttpMethod.ANY),
@@ -387,6 +411,14 @@ export class ExaminatorStack extends cdk.Stack {
       httpApi,
       routeKey: HttpRouteKey.with('/JOIN', HttpMethod.ANY),
       integration: new HttpLambdaIntegration('joinExamLambdaInegration', joinExamLambda, {
+        payloadFormatVersion: PayloadFormatVersion.custom('2.0'),
+      }),
+    })
+
+    new HttpRoute(this, 'ExaminatorAPIRouteSubmitExamAnswer' + HttpMethod.ANY, {
+      httpApi,
+      routeKey: HttpRouteKey.with('/SUBMIT', HttpMethod.ANY),
+      integration: new HttpLambdaIntegration('submitExamAnswerLambdaInegration', submitExamAnswerLambda, {
         payloadFormatVersion: PayloadFormatVersion.custom('2.0'),
       }),
     })
@@ -410,7 +442,7 @@ function getLayerHash(packagePath: string): string {
 
 const app = new cdk.App()
 new ExaminatorStack(app, 'ExaminatorStack', {
-  env: { region: 'eu-west-1' }
+  env: { region: 'eu-west-1' },
   /* If you don't specify 'env', this stack will be environment-agnostic.
    * Account/Region-dependent features and context lookups will not work,
    * but a single synthesized template can be deployed anywhere. */

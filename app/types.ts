@@ -1,23 +1,73 @@
 import { z } from 'zod'
 
 export const userType = z.enum(['admin', 'teacher', 'student'])
-
+export const examStatus = z.enum(['normal', 'canceled', 'finished'])
 // **********  Courses  **********
 // **********  Courses  **********
 // **********  Courses  **********
 
 export const courses = [
-  { id: 'COME125', name: 'Introduction to Computer Science' },
-  { id: 'COME225', name: 'Data Structures and Algorithms' },
-  { id: 'COME325', name: 'Computer Networks' },
-  { id: 'COME425', name: 'Database Systems' },
-  { id: 'COME525', name: 'Operating Systems' },
-  { id: 'COME625', name: 'Software Engineering' },
-  { id: 'COME725', name: 'Artificial Intelligence' },
-  { id: 'COME825', name: 'Computer Graphics' },
-  { id: 'COME925', name: 'Computer Architecture' },
-  { id: 'COME1025', name: 'Programming Languages' },
-];
+  {
+    id: 'COME125',
+    name: 'Introduction to Computer Science',
+  },
+  {
+    id: 'COME225',
+    name: 'Data Structures and Algorithms',
+  },
+  {
+    id: 'COME325',
+    name: 'Database Systems',
+  },
+  {
+    id: 'COME425',
+    name: 'Software Engineering',
+  },
+  {
+    id: 'COME525',
+    name: 'Artificial Intelligence',
+  },
+  {
+    id: 'COME625',
+    name: 'Computer Networks',
+  },
+  {
+    id: 'COME725',
+    name: 'Computer Security',
+  },
+  {
+    id: 'COME825',
+    name: 'Distributed Systems',
+  },
+  {
+    id: 'COME925',
+    name: 'Cloud Computing',
+  },
+  {
+    id: 'COME1025',
+    name: 'Machine Learning',
+  },
+  {
+    id: 'COME1125',
+    name: 'Mobile Application Development',
+  },
+  {
+    id: 'COME1225',
+    name: 'Web Development',
+  },
+  {
+    id: 'COME1325',
+    name: 'Computer Graphics',
+  },
+  {
+    id: 'COME1425',
+    name: 'Human-Computer Interaction',
+  },
+  {
+    id: 'COME1525',
+    name: 'Natural Language Processing',
+  },
+]
 // **********  Authentication  **********
 // **********  Authentication  **********
 // **********  Authentication  **********
@@ -33,16 +83,35 @@ export type AuthenticationTableItem = z.infer<typeof authenticationTableItem>
 // **********  Users  **********
 // **********  Users  **********
 
+export const userCourse = z.object({
+  id: z.string(),
+  name: z.string(),
+})
+
+export const userExam = z.object({
+  examId: z.string(),
+  examName: z.string(),
+  courseId: z.string(),
+  courseName: z.string(),
+  startDate: z.string(),
+  duration: z.number(), // in minutes
+  score: z.number(),
+  isCreator: z.boolean(), // when true, the user is teacher who created the exam
+  isPassed: z.boolean(),
+  status: examStatus,
+})
+export type UsersTableItemExam = z.infer<typeof userExam>
+
 export const usersTableItem = z.object({
   userId: z.string(),
   userType: userType,
   email: z.string().email(),
   firstName: z.string(),
   lastName: z.string(),
-  courses: z.array(z.object({
-    id: z.string(),
-    name: z.string(),
-  })),
+  university: z.string(),
+  universityPersonalId: z.string(),
+  courses: z.array(userCourse),
+  exams: z.record(z.string(), userExam),
 })
 export type UsersTableItem = z.infer<typeof usersTableItem>
 
@@ -62,10 +131,15 @@ export type SessionTableItem = z.infer<typeof sessionTableItem>
 // **********  Exam Token **********
 // **********  Exam Token **********
 
-export interface ExamTokenMetaData {
+export interface ExamTicketTokenMetaData {
+  examId: string
+  userId: string
+  courseId: string
+}
+
+export interface FinishExamTokenMetaData {
   examId: string
   courseId: string
-  userId: string
 }
 
 // **********  Exam DB **********
@@ -79,11 +153,12 @@ export const examTableItem = z.object({
   courseName: z.string(),
   description: z.string(),
   minimumPassingScore: z.number(),
-  startDate: z.number(),
-  duration: z.number(),
+  startDate: z.string(),
+  duration: z.number(), // in minutes
   createdAt: z.string(),
   createdBy: z.string(),
   questionsMetaData: z.record(z.string(), z.array(z.string())),
+  status: examStatus,
 })
 export type ExamTableItem = z.infer<typeof examTableItem>
 
@@ -100,7 +175,7 @@ export const examsQuestion = z.object({
   questionId: z.string(),
   questionText: z.string(),
   correctOptionId: z.string(),
-  options: z.array(examOption),  
+  options: z.array(examOption),
 })
 
 export const examS3Item = z.object({

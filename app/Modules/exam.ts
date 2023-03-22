@@ -1,25 +1,34 @@
-import { APIGatewayProxyEventV2, Context } from 'aws-lambda'
+import { PutCommand, GetCommand, DeleteCommand, UpdateCommand, UpdateCommandInput, PutCommandInput } from '@aws-sdk/lib-dynamodb'
 import { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3'
+import { SFNClient, StartExecutionCommand, StartExecutionCommandInput } from '@aws-sdk/client-sfn'
+import { APIGatewayProxyEventV2, Context } from 'aws-lambda'
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb'
-import { PutCommand, GetCommand, DeleteCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb'
 import { v4 as uuidv4 } from 'uuid'
-import { sign, verify as JWTVerify } from 'jsonwebtoken'
-
-import { validateExamToken, validateSessionToken } from './authorization'
-import { Response, ExaminatorResponse } from '../response'
-import { examinatorBucket, examSessionsTableName, examsTableName, nanoid, streamToString, usersTableName } from '../utils'
-import { ExamS3Item, ExamTableItem, ExamTokenMetaData, ExamSessionTableItem, courses, UsersTableItem } from '../types'
-import { createExamInput, CreateExamInput, joinExamInput, submitAnswerInput } from '../models'
+import { sign } from 'jsonwebtoken'
 import { Readable } from 'stream'
 
-const { ACCESS_TOKEN_SECRET, EXAM_TOKEN_SECRET } = process.env
+import { validateExamTicketToken, validateSessionToken } from './authorization'
+import { Response, ExaminatorResponse } from '../response'
+import { examFinished, examinatorBucket, examSessionsTableName, examsTableName, examStarted, getExamFinishDate, getExamFinishTime, getExamQuestionsS3Path, getExamTokenExpirationTime, nanoid, streamToString, usersTableName } from '../utils'
+import { ExamS3Item, ExamTableItem, ExamTicketTokenMetaData, ExamSessionTableItem, courses, UsersTableItem, UsersTableItemExam, examStatus, FinishExamTokenMetaData } from '../types'
+import { createExamInput, CreateExamInput, finisherExamInput, joinExamInput, submitAnswerInput } from '../models'
+
+const { ACCESS_TOKEN_SECRET, EXAM_TOKEN_SECRET, FINISH_EXAM_TOKEN_SECRET, FINISHER_MACHINE_ARN } = process.env
 
 const s3 = new S3Client({})
 
 const dynamo = new DynamoDBClient({})
 
+const sf = new SFNClient({})
+
+// TODO handle exam finish token expiration & exam session expiration and those stuff
+
 export const createExam = async (event: APIGatewayProxyEventV2, context: Context): Promise<ExaminatorResponse> => {
   try {
+    if (!FINISH_EXAM_TOKEN_SECRET || !FINISHER_MACHINE_ARN || !ACCESS_TOKEN_SECRET) {
+      throw new Response({ statusCode: 500, message: 'Server Error ENV vars not set!' })
+    }
+
     if (event.requestContext.http.method === 'OPTIONS') {
       return new Response({ statusCode: 200, body: {} }).response
     }
@@ -31,24 +40,33 @@ export const createExam = async (event: APIGatewayProxyEventV2, context: Context
       throw new Response({ statusCode: 403, message: 'You are not allowed to create exams !' })
     }
 
-    const inputExam: CreateExamInput = createExamInput.parse(JSON.parse(event.body!))
+    const _input = createExamInput.safeParse(JSON.parse(event.body || '{}'))
 
-    if (!courses.find((course) => course.id === inputExam.courseId)) {
-      throw new Response({ statusCode: 400, message: 'Invalid Course ID !' })
+    if (_input.success === false) {
+      throw new Response({ statusCode: 400, message: 'Woops! It looks like you sent us the wrong data. Double-check your request and try again.', addons: { issues: _input.error.issues } })
     }
 
-    if (!courses.find((course) => course.name === inputExam.courseName)) {
-      throw new Response({ statusCode: 400, message: 'Invalid Course Name !' })
+    const input = _input.data
+
+    if (new Date(input.startDate).getTime() < Date.now()) {
+      throw new Response({ statusCode: 400, message: 'Exam start date is in the past !' })
+    }
+
+    const course = courses.find((course) => course.id === input.courseId)
+
+    if (!course) {
+      throw new Response({ statusCode: 400, message: 'Invalid Course ID !' })
     }
 
     // generate exam id
     const examId: string = uuidv4()
 
     // **********
+    // insert exam questions to s3
     // **********
 
     // generate questions ids and options ids
-    const questions = inputExam.examQuestions.map((question) => ({
+    const questions = input.examQuestions.map((question) => ({
       questionId: nanoid(10),
       questionText: question.questionText,
       options: question.options.map((option) => ({
@@ -68,18 +86,20 @@ export const createExam = async (event: APIGatewayProxyEventV2, context: Context
       })),
     }))
 
-    // **********
-    // **********
-
     const s3_exam: ExamS3Item = {
       examId,
       examQuestions,
     }
 
-    // **********
-    // **********
+    const s3_put_command = new PutObjectCommand({
+      Bucket: examinatorBucket,
+      Key: getExamQuestionsS3Path(course.id, examId),
+      Body: JSON.stringify(s3_exam),
+    })
 
-    delete inputExam.examQuestions
+    // **********
+    // insert exam to exam table
+    // **********
 
     const questionsMetaData = {}
 
@@ -88,31 +108,46 @@ export const createExam = async (event: APIGatewayProxyEventV2, context: Context
     }
 
     const db_exam: ExamTableItem = {
-      ...inputExam,
       examId,
+      courseId: course.id,
+      courseName: course.name,
+      name: input.name,
+      description: input.description,
+      minimumPassingScore: input.minimumPassingScore,
+      startDate: input.startDate,
+      duration: input.duration,
       questionsMetaData,
-      createdAt: new Date().toISOString(),
+      createdAt: new Date().toUTCString(),
       createdBy: auth.userId,
+      status: examStatus.enum.normal,
     }
 
+    const exams_PutCommand = new PutCommand({
+      TableName: examsTableName,
+      Item: db_exam,
+    })
+
     // **********
     // **********
 
-    const workes = [
-      s3.send(
-        new PutObjectCommand({
-          Bucket: examinatorBucket,
-          Key: `exams/${inputExam.courseId}/${examId}.json`,
-          Body: JSON.stringify(s3_exam),
-        }),
-      ),
-      dynamo.send(
-        new PutCommand({
-          TableName: examsTableName,
-          Item: db_exam,
-        }),
-      ),
-    ]
+    const finishTokenData: FinishExamTokenMetaData = {
+      examId,
+      courseId: course.id,
+    }
+
+    const timeLeftToFinish = getExamTokenExpirationTime(input.startDate, input.duration)
+    const finisherToken = sign(finishTokenData, FINISH_EXAM_TOKEN_SECRET,  { expiresIn: timeLeftToFinish + 5 });
+    
+    const startExecutionParams: StartExecutionCommandInput = {
+      stateMachineArn: FINISHER_MACHINE_ARN,
+      input: JSON.stringify({ executeAt: getExamFinishDate(input.startDate, input.duration), finisherToken }),
+    }
+
+    const startExecutionCommand = new StartExecutionCommand(startExecutionParams)
+    // **********
+    // **********
+
+    const workes = [s3.send(s3_put_command), dynamo.send(exams_PutCommand), sf.send(startExecutionCommand)]
 
     await Promise.all(workes)
 
@@ -126,7 +161,6 @@ export const createExam = async (event: APIGatewayProxyEventV2, context: Context
   }
 }
 
-// TODO: add exam list to user table
 export const joinExam = async (event: APIGatewayProxyEventV2, context: Context): Promise<ExaminatorResponse> => {
   try {
     if (event.requestContext.http.method === 'OPTIONS') {
@@ -136,7 +170,17 @@ export const joinExam = async (event: APIGatewayProxyEventV2, context: Context):
 
     const auth = await validateSessionToken(_token, ACCESS_TOKEN_SECRET)
 
-    const { examId, courseId } = joinExamInput.parse(JSON.parse(event.body!))
+    const _input = joinExamInput.safeParse(JSON.parse(event.body || '{}'))
+
+    if (_input.success === false) {
+      throw new Response({ statusCode: 400, message: 'Woops! It looks like you sent us the wrong data. Double-check your request and try again.', addons: { issues: _input.error.issues } })
+    }
+
+    const { examId, courseId } = _input.data
+
+    // **********
+    // check if user is enrolled in course
+    // **********
 
     const _user = await dynamo.send(
       new GetCommand({
@@ -153,9 +197,13 @@ export const joinExam = async (event: APIGatewayProxyEventV2, context: Context):
       throw new Response({ statusCode: 404, message: 'Couldnt find any user with this id', addons: { userId: auth.userId } })
     }
 
-    if (!user.courses.find((course) => course.id === courseId)) {
+    if (auth.userType === 'student' && user.courses.find((course) => course.id === courseId)) {
       throw new Response({ statusCode: 400, message: 'You are not enrolled in this course !' })
     }
+
+    // **********
+    // check recived exam is valid
+    // **********
 
     const examGetDB = await dynamo.send(
       new GetCommand({
@@ -173,19 +221,38 @@ export const joinExam = async (event: APIGatewayProxyEventV2, context: Context):
       throw new Response({ statusCode: 400, message: 'This exam doesnt exist !', addons: { examId, courseId } })
     }
 
+    if (!examStarted(exam.startDate)) {
+      throw new Response({ statusCode: 400, message: 'This exam is not started yet !' })
+    }
+
+    if (examFinished(exam.startDate, exam.duration) || exam.status === examStatus.enum.finished) {
+      throw new Response({ statusCode: 400, message: 'This exam is finished ! You cannot join anymore !' })
+    }
+
+    if (exam.status === examStatus.enum.canceled) {
+      throw new Response({ statusCode: 400, message: 'This exam is canceled ! You cannot join anymore !' })
+    }
+
+    // **********
+    // fetch exam questions from s3
+    // **********
+
     const s3_exam = await s3.send(
       new GetObjectCommand({
         Bucket: examinatorBucket,
-        Key: `exams/${courseId}/${examId}.json`,
+        Key: getExamQuestionsS3Path(courseId, examId),
       }),
     )
 
     const examData: ExamS3Item = JSON.parse(await streamToString(s3_exam.Body as Readable))
+    // VERY IMPORTANT to remove correct option id from exam data
     examData.examQuestions = examData.examQuestions.map((question) => ({
       ...question,
       correctOptionId: undefined,
     }))
 
+    // **********
+    // check if user has already joined this exam, if already joined skip later parts
     // **********
 
     const _examSession = await dynamo.send(
@@ -205,42 +272,94 @@ export const joinExam = async (event: APIGatewayProxyEventV2, context: Context):
     }
 
     // **********
+    // user doesnt have exam session, create session and token, update tables
+    // **********
 
-    const examTokenExp = (exam.duration + exam.startDate) * 1000
-
-    if (examTokenExp < Date.now()) {
-      throw new Response({ statusCode: 400, message: 'Exam token expiration date is in the past', addons: { examTokenExp } })
-    }
-
-    const tokenData: ExamTokenMetaData = {
+    const tokenData: ExamTicketTokenMetaData = {
       examId,
-      courseId,
       userId: auth.userId,
+      courseId: exam.courseId,
     }
 
-    const userExamToken = sign(tokenData, EXAM_TOKEN_SECRET, { expiresIn: examTokenExp })
+    const timeLeftToFinish = getExamTokenExpirationTime(exam.startDate, exam.duration)
 
-    await dynamo.send(
-      new PutCommand({
-        TableName: examSessionsTableName,
-        Item: {
-          examId,
-          userId: auth.userId,
-          userExamToken,
-          userAnswers: {},
-        },
-      }),
-    )
+    const userExamToken = sign(tokenData, EXAM_TOKEN_SECRET, { expiresIn: timeLeftToFinish })
+
+    const examSessions_PutCommand = new PutCommand({
+      TableName: examSessionsTableName,
+      Item: {
+        examId,
+        userId: auth.userId,
+        userExamToken,
+        userAnswers: {},
+      },
+    })
+
+    const users_exam: UsersTableItemExam = {
+      examId,
+      examName: exam.name,
+      courseId: exam.courseId,
+      courseName: exam.courseName,
+      startDate: exam.startDate,
+      duration: exam.duration,
+      isCreator: false,
+      status: examStatus.enum.normal,
+      isPassed: false,
+      score: 0,
+    }
+
+    const users_updateCommand = new UpdateCommand({
+      TableName: usersTableName,
+      Key: {
+        userId: auth.userId,
+      },
+      UpdateExpression: 'SET exams.#k = :v',
+      ExpressionAttributeNames: {
+        '#k': examId,
+      },
+      ExpressionAttributeValues: {
+        ':v': users_exam,
+      },
+    })
+
+    const workes = [dynamo.send(examSessions_PutCommand), dynamo.send(users_updateCommand)]
+
+    await Promise.all(workes)
 
     // **********
 
     return new Response({ statusCode: 200, body: { success: true, data: { token: userExamToken, data: examData } } }).response
   } catch (error) {
+    console.log(error)
+
     return error instanceof Response ? error.response : new Response({ message: 'Generic Examinator Error', statusCode: 400, addons: { error: error.message } }).response
   }
 }
 
-export const submitAnswer = async (event: APIGatewayProxyEventV2, context: Context): Promise<ExaminatorResponse> => {
+export const finishExam = async (payload: any): Promise<ExaminatorResponse> => {
+  try {
+
+    const _input = finisherExamInput.safeParse(payload)
+
+    if (_input.success === false) {
+      throw new Response({ statusCode: 400, message: 'Woops! It looks like you sent us the wrong data. Double-check your request and try again.', addons: { issues: _input.error.issues } })
+    }
+
+    const { finisherToken } = _input.data
+
+    const finishAuth = await validateExamTicketToken(finisherToken, FINISH_EXAM_TOKEN_SECRET)
+
+    console.log(finishAuth)
+    // **********
+
+    return new Response({ statusCode: 200, body: { success: true } }).response
+  } catch (error) {
+    console.log(error)
+    return error instanceof Response ? error.response : new Response({ message: 'Generic Examinator Error', statusCode: 400, addons: { error: error.message } }).response
+  }
+}
+
+export const submitToExam = async (event: APIGatewayProxyEventV2, context: Context): Promise<ExaminatorResponse> => {
   try {
     if (event.requestContext.http.method === 'OPTIONS') {
       return new Response({ statusCode: 200, body: {} }).response
@@ -248,17 +367,23 @@ export const submitAnswer = async (event: APIGatewayProxyEventV2, context: Conte
 
     const accessToken = event.headers['access-token']
     const examToken = event.headers['exam-token']
-    
+
     const auth = await validateSessionToken(accessToken, ACCESS_TOKEN_SECRET)
 
     // this will handle -> is exam exist & is exam time ended
-    const examAuth = await validateExamToken(examToken, EXAM_TOKEN_SECRET)
+    const examAuth = await validateExamTicketToken(examToken, EXAM_TOKEN_SECRET)
 
     if (examAuth.userId !== auth.userId) {
-      throw new Response({ statusCode: 400, message: 'This exam doesnt belong to this user', addons: { examAuth, auth } })
+      throw new Response({ statusCode: 400, message: 'This exam session did not started by you cannot use this !', addons: { examAuth, auth } })
     }
 
-    const { questionId, optionId } = submitAnswerInput.parse(JSON.parse(event.body!))
+    const _input = submitAnswerInput.safeParse(JSON.parse(event.body || '{}'))
+
+    if (_input.success === false) {
+      throw new Response({ statusCode: 400, message: 'Woops! It looks like you sent us the wrong data. Double-check your request and try again.', addons: { issues: _input.error.issues } })
+    }
+
+    const { questionId, optionId } = _input.data
 
     const examDB = await dynamo.send(
       new GetCommand({
@@ -269,15 +394,26 @@ export const submitAnswer = async (event: APIGatewayProxyEventV2, context: Conte
         },
       }),
     )
-    
     const exam = examDB.Item as ExamTableItem
-    
+
     if (!exam) {
       throw new Response({ statusCode: 400, message: 'This exam doesnt exist !', addons: { examAuth } })
     }
 
+    if (!examStarted(exam.startDate)) {
+      throw new Response({ statusCode: 400, message: 'This exam is not started yet !' })
+    }
+
+    if (examFinished(exam.startDate, exam.duration) || exam.status === examStatus.enum.finished) {
+      throw new Response({ statusCode: 400, message: 'This exam is finished ! You cannot submit answers anymore !' })
+    }
+
+    if (exam.status === examStatus.enum.canceled) {
+      throw new Response({ statusCode: 400, message: 'This exam is canceled ! You cannot submit answers anymore !' })
+    }
+
     if (!exam.questionsMetaData[questionId] || !exam.questionsMetaData[questionId].includes(optionId)) {
-      throw new Response({ statusCode: 400, message: 'This exam doesnt have this question or this question doesnt have this option', addons: { examId: examAuth.examId, questionId, optionId } })
+      throw new Response({ statusCode: 400, message: 'This exam does not have this question or this question does not have this option !', addons: { examAuth, questionId, optionId } })
     }
 
     // ********************
@@ -290,17 +426,18 @@ export const submitAnswer = async (event: APIGatewayProxyEventV2, context: Conte
       },
       UpdateExpression: 'SET userAnswers.#k = :v',
       ExpressionAttributeNames: {
-        '#k': questionId
+        '#k': questionId,
       },
       ExpressionAttributeValues: {
-        ':v': optionId
-      }
-    };
-    
+        ':v': optionId,
+      },
+    }
+
     await dynamo.send(new UpdateCommand(params))
 
     return new Response({ statusCode: 200, body: { success: true } }).response
   } catch (error) {
+    console.log(error)
     return error instanceof Response ? error.response : new Response({ message: 'Generic Examinator Error', statusCode: 400, addons: { error: error.message } }).response
   }
 }

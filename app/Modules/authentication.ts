@@ -6,7 +6,7 @@ import { v4 as uuidv4 } from 'uuid'
 import { createSession, terminateSession } from './authorization'
 import { signInInput, registerInput, signOutInput } from '../models'
 import { ExaminatorResponse, Response } from '../response'
-import { AuthenticationTableItem, UsersTableItem } from '../types'
+import { AuthenticationTableItem, courses, UsersTableItem } from '../types'
 import { authenticationsTableName, usersTableName } from '../utils'
 
 const client = new DynamoDBClient({})
@@ -33,7 +33,13 @@ export const signUp = async (event: APIGatewayProxyEventV2, context: Context): P
       throw new Response({ statusCode: 400, message: 'Woops! It looks like you sent us the wrong data. Double-check your request and try again.', addons: { issues: _input.error.issues } })
     }
 
-    const { email, password, userType } = _input.data
+    const { email, password, userType, firstName, lastName, university, universityPersonalId, courses: inputCourses } = _input.data
+
+    const badCourses = inputCourses.filter((_course) => !courses.find((c) => c.id === _course.id))
+
+    if (badCourses.length > 0) {
+      throw new Response({ statusCode: 400, message: 'We dont have some of these courses in our database', addons: { badCourses } })
+    }
 
     const newId = uuidv4().replace(/-/g, '')
 
@@ -54,23 +60,31 @@ export const signUp = async (event: APIGatewayProxyEventV2, context: Context): P
       if (error instanceof ConditionalCheckFailedException) {
         throw new Response({ statusCode: 400, message: 'User with this email already exists !', addons: { email } })
       } else {  
-        throw new Response({ statusCode: 400, message: 'Database Error, please contact admin !', addons: { error } })
+        throw new Response({ statusCode: 400, message: 'Auth Database Error, please contact admin !', addons: { error } })
       }
+    }
+
+    const user: UsersTableItem = {
+      userId: newId,
+      userType,
+      email,
+      firstName,
+      lastName,
+      university,
+      universityPersonalId,
+      courses,
+      exams: {}
     }
 
     const profileDB = await dynamo.send(
       new PutCommand({
         TableName: usersTableName,
-        Item: {
-          userId: newId,
-          userType,
-          email,
-        },
-      }),
+        Item: user,
+      })
     )
 
     if (profileDB.$metadata.httpStatusCode !== 200) {
-      throw new Response({ statusCode: 400, message: 'Database Error, please contact admin !', addons: { error: profileDB } })
+      throw new Response({ statusCode: 400, message: 'User Database Error, please contact admin !', addons: { error: profileDB } })
     }
 
     const session = await createSession({ userId: newId, userType }, event.requestContext.http.sourceIp)
@@ -95,7 +109,7 @@ export const signIn = async (event: APIGatewayProxyEventV2, context: Context): P
 
     const { email, password: recivedPassword } = _input.data
 
-    const authDB = await dynamo.send(
+    const _auth = await dynamo.send(
       new GetCommand({
         TableName: authenticationsTableName,
         Key: {
@@ -104,9 +118,9 @@ export const signIn = async (event: APIGatewayProxyEventV2, context: Context): P
       }),
     )
 
-    const authInfo = authDB.Item as AuthenticationTableItem
+    const auth = _auth.Item as AuthenticationTableItem
 
-    if (!authInfo || !authInfo.password || authInfo.password !== encodePassword(recivedPassword)) {
+    if (!auth || !auth.password || auth.password !== encodePassword(recivedPassword)) {
       throw new Response({ statusCode: 400, message: 'User with this email does not exist or Incorrect password !' })
     }
 
@@ -114,7 +128,7 @@ export const signIn = async (event: APIGatewayProxyEventV2, context: Context): P
       new GetCommand({
         TableName: usersTableName,
         Key: {
-          userId: authInfo.userId,
+          userId: auth.userId,
         },
       }),
     )

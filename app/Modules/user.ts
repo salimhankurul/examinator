@@ -14,7 +14,7 @@ const { ACCESS_TOKEN_SECRET } = process.env
 const client = new DynamoDBClient({})
 const dynamo = DynamoDBDocumentClient.from(client)
 
-export const updateProfile = async (event: APIGatewayProxyEventV2, context: Context): Promise<ExaminatorResponse> => {
+export const updateUser = async (event: APIGatewayProxyEventV2, context: Context): Promise<ExaminatorResponse> => {
   try {
     if (event.requestContext.http.method === 'OPTIONS') {
       return new Response({ statusCode: 200, body: {} }).response
@@ -68,7 +68,7 @@ export const updateProfile = async (event: APIGatewayProxyEventV2, context: Cont
   }
 }
 
-export const getProfile = async (event: APIGatewayProxyEventV2, context: Context): Promise<ExaminatorResponse> => {
+export const getUser = async (event: APIGatewayProxyEventV2, context: Context): Promise<ExaminatorResponse> => {
   try {
     if (event.requestContext.http.method === 'OPTIONS') {
       return new Response({ statusCode: 200, body: {} }).response
