@@ -7,21 +7,19 @@ import { v4 as uuidv4 } from 'uuid'
 import { sign } from 'jsonwebtoken'
 import { Readable } from 'stream'
 
-import { validateExamTicketToken, validateSessionToken } from './authorization'
+import { validateExamTicketToken, validateFinishToken, validateSessionToken } from './authorization'
 import { Response, ExaminatorResponse } from '../response'
-import { examFinished, examinatorBucket, examSessionsTableName, examsTableName, examStarted, getExamFinishDate, getExamFinishTime, getExamQuestionsS3Path, getExamTokenExpirationTime, nanoid, streamToString, usersTableName } from '../utils'
+import { examFinished, examinatorBucket, examSessionsTableName, examsTableName, examStarted, getExamFinishExecuteAtDate, getExamFinishTime, getExamQuestionsS3Path, getExamTokenExpirationTime, nanoid, streamToString, usersTableName } from '../utils'
 import { ExamS3Item, ExamTableItem, ExamTicketTokenMetaData, ExamSessionTableItem, courses, UsersTableItem, UsersTableItemExam, examStatus, FinishExamTokenMetaData } from '../types'
 import { createExamInput, CreateExamInput, finisherExamInput, joinExamInput, submitAnswerInput } from '../models'
 
-const { ACCESS_TOKEN_SECRET, EXAM_TOKEN_SECRET, FINISH_EXAM_TOKEN_SECRET, FINISHER_MACHINE_ARN } = process.env
+const { ACCESS_TOKEN_SECRET, EXAM_SESSION_TOKEN_SECRET, FINISH_EXAM_TOKEN_SECRET, FINISHER_MACHINE_ARN } = process.env
 
 const s3 = new S3Client({})
 
 const dynamo = new DynamoDBClient({})
 
 const sf = new SFNClient({})
-
-// TODO handle exam finish token expiration & exam session expiration and those stuff
 
 export const createExam = async (event: APIGatewayProxyEventV2, context: Context): Promise<ExaminatorResponse> => {
   try {
@@ -134,13 +132,15 @@ export const createExam = async (event: APIGatewayProxyEventV2, context: Context
       examId,
       courseId: course.id,
     }
-
-    const timeLeftToFinish = getExamTokenExpirationTime(input.startDate, input.duration)
-    const finisherToken = sign(finishTokenData, FINISH_EXAM_TOKEN_SECRET,  { expiresIn: timeLeftToFinish + 5 });
+   
+    // we add 10 seconds since, the finisher machine will start after 5 seconds from finish time
+    const timeLeftToFinish = getExamTokenExpirationTime(input.startDate, input.duration) + 10 // in seconds
+    const finisherToken = sign(finishTokenData, FINISH_EXAM_TOKEN_SECRET,  { expiresIn: timeLeftToFinish });
     
+    // start finisher machine after 5 seconds from finish time
     const startExecutionParams: StartExecutionCommandInput = {
       stateMachineArn: FINISHER_MACHINE_ARN,
-      input: JSON.stringify({ executeAt: getExamFinishDate(input.startDate, input.duration), finisherToken }),
+      input: JSON.stringify({ executeAt: getExamFinishExecuteAtDate(input.startDate, input.duration), finisherToken }),
     }
 
     const startExecutionCommand = new StartExecutionCommand(startExecutionParams)
@@ -155,6 +155,31 @@ export const createExam = async (event: APIGatewayProxyEventV2, context: Context
     // **********
 
     return new Response({ statusCode: 200, body: { success: true, exam: db_exam } }).response
+  } catch (error) {
+    console.log(error)
+    return error instanceof Response ? error.response : new Response({ message: 'Generic Examinator Error', statusCode: 400, addons: { error: error.message } }).response
+  }
+}
+
+export const finishExam = async (payload: any): Promise<ExaminatorResponse> => {
+  try {
+
+    const _input = finisherExamInput.safeParse(payload)
+
+    if (_input.success === false) {
+      throw new Response({ statusCode: 400, message: 'Woops! It looks like you sent us the wrong data. Double-check your request and try again.', addons: { issues: _input.error.issues } })
+    }
+
+    const { finisherToken } = _input.data
+
+    const finishAuth = await validateFinishToken(finisherToken, FINISH_EXAM_TOKEN_SECRET)
+
+    console.log(finishAuth)
+    // **********
+
+    // TODO evaluate exam and update exam status and announce people scores
+
+    return new Response({ statusCode: 200, body: { success: true } }).response
   } catch (error) {
     console.log(error)
     return error instanceof Response ? error.response : new Response({ message: 'Generic Examinator Error', statusCode: 400, addons: { error: error.message } }).response
@@ -222,7 +247,7 @@ export const joinExam = async (event: APIGatewayProxyEventV2, context: Context):
     }
 
     if (!examStarted(exam.startDate)) {
-      throw new Response({ statusCode: 400, message: 'This exam is not started yet !' })
+      throw new Response({ statusCode: 400, message: 'This exam is not started yet ! It will start on ' + exam.startDate })
     }
 
     if (examFinished(exam.startDate, exam.duration) || exam.status === examStatus.enum.finished) {
@@ -283,7 +308,7 @@ export const joinExam = async (event: APIGatewayProxyEventV2, context: Context):
 
     const timeLeftToFinish = getExamTokenExpirationTime(exam.startDate, exam.duration)
 
-    const userExamToken = sign(tokenData, EXAM_TOKEN_SECRET, { expiresIn: timeLeftToFinish })
+    const userExamToken = sign(tokenData, EXAM_SESSION_TOKEN_SECRET, { expiresIn: timeLeftToFinish })
 
     const examSessions_PutCommand = new PutCommand({
       TableName: examSessionsTableName,
@@ -336,29 +361,6 @@ export const joinExam = async (event: APIGatewayProxyEventV2, context: Context):
   }
 }
 
-export const finishExam = async (payload: any): Promise<ExaminatorResponse> => {
-  try {
-
-    const _input = finisherExamInput.safeParse(payload)
-
-    if (_input.success === false) {
-      throw new Response({ statusCode: 400, message: 'Woops! It looks like you sent us the wrong data. Double-check your request and try again.', addons: { issues: _input.error.issues } })
-    }
-
-    const { finisherToken } = _input.data
-
-    const finishAuth = await validateExamTicketToken(finisherToken, FINISH_EXAM_TOKEN_SECRET)
-
-    console.log(finishAuth)
-    // **********
-
-    return new Response({ statusCode: 200, body: { success: true } }).response
-  } catch (error) {
-    console.log(error)
-    return error instanceof Response ? error.response : new Response({ message: 'Generic Examinator Error', statusCode: 400, addons: { error: error.message } }).response
-  }
-}
-
 export const submitToExam = async (event: APIGatewayProxyEventV2, context: Context): Promise<ExaminatorResponse> => {
   try {
     if (event.requestContext.http.method === 'OPTIONS') {
@@ -371,7 +373,7 @@ export const submitToExam = async (event: APIGatewayProxyEventV2, context: Conte
     const auth = await validateSessionToken(accessToken, ACCESS_TOKEN_SECRET)
 
     // this will handle -> is exam exist & is exam time ended
-    const examAuth = await validateExamTicketToken(examToken, EXAM_TOKEN_SECRET)
+    const examAuth = await validateExamTicketToken(examToken, EXAM_SESSION_TOKEN_SECRET)
 
     if (examAuth.userId !== auth.userId) {
       throw new Response({ statusCode: 400, message: 'This exam session did not started by you cannot use this !', addons: { examAuth, auth } })
@@ -400,11 +402,7 @@ export const submitToExam = async (event: APIGatewayProxyEventV2, context: Conte
       throw new Response({ statusCode: 400, message: 'This exam doesnt exist !', addons: { examAuth } })
     }
 
-    if (!examStarted(exam.startDate)) {
-      throw new Response({ statusCode: 400, message: 'This exam is not started yet !' })
-    }
-
-    if (examFinished(exam.startDate, exam.duration) || exam.status === examStatus.enum.finished) {
+    if (exam.status === examStatus.enum.finished) {
       throw new Response({ statusCode: 400, message: 'This exam is finished ! You cannot submit answers anymore !' })
     }
 

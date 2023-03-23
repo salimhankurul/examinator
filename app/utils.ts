@@ -38,8 +38,9 @@ export const getExamFinishTime = (start: string, duration: number): number => {
   return (duration * 60 * 1000) + getExamStartTime(start)
 }
 
-export const getExamFinishDate = (start: string, duration: number): string => {
-  return new Date(getExamFinishTime(start, duration)).toISOString()
+// execute after 5 seconds to make sure the exam is finished
+export const getExamFinishExecuteAtDate = (start: string, duration: number): string => {
+  return new Date(getExamFinishTime(start, duration) + 5000).toISOString()
 }
 
 export const getExamTokenExpirationTime = (start: string, duration: number): number => { // in seconds

@@ -135,11 +135,15 @@ export interface ExamTicketTokenMetaData {
   examId: string
   userId: string
   courseId: string
+  iat?: number
+  exp?: number
 }
 
 export interface FinishExamTokenMetaData {
   examId: string
   courseId: string
+  iat?: number
+  exp?: number
 }
 
 // **********  Exam DB **********

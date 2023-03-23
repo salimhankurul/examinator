@@ -1,7 +1,7 @@
 import crypto from 'crypto'
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb'
 import { DynamoDBDocumentClient, PutCommand, GetCommand, DeleteCommand } from '@aws-sdk/lib-dynamodb'
-import { sign, verify } from 'jsonwebtoken'
+import { sign, verify, decode } from 'jsonwebtoken'
 import { APIGatewayProxyEventV2, Context } from 'aws-lambda'
 import { Response, ExaminatorResponse } from '../response'
 import { TokenMetaData, SessionTableItem, ExamTicketTokenMetaData, FinishExamTokenMetaData } from '../types'
@@ -105,6 +105,10 @@ export const validateExamTicketToken = async (_token: string, secret: string): P
   try {
     return verify(_token, secret) as ExamTicketTokenMetaData
   } catch (error) {
+      if (error.message === 'jwt expired') {
+        const decoded = decode(_token) as FinishExamTokenMetaData
+        throw new Response({ statusCode: 403, message: `This exam finished on ${new Date(decoded.exp * 1000).toUTCString()}, you no longer can submit answers !` })
+      }
       throw new Response({ statusCode: 403, message: 'There has been a problem while authorizing your exam token.', addons: { tokenError: error.message } })
   }
 }
@@ -113,7 +117,8 @@ export const validateFinishToken = async (_token: string, secret: string): Promi
   try {
     return verify(_token, secret) as FinishExamTokenMetaData
   } catch (error) {
-      throw new Response({ statusCode: 403, message: 'There has been a problem while authorizing your exam token.', addons: { tokenError: error.message } })
+    // TODO ALERT HERE, this should not happen !
+    throw new Response({ statusCode: 403, message: 'There has been a problem while authorizing your exam token.', addons: { tokenError: error.message } })
   }
 }
 

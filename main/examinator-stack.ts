@@ -317,6 +317,7 @@ export class ExaminatorStack extends cdk.Stack {
       layers: [layer],
       environment: {
         ACCESS_TOKEN_SECRET: 'ACCESS_TOKEN_SECRET',
+        EXAM_SESSION_TOKEN_SECRET: 'EXAM_SESSION_TOKEN_SECRET',
       },
     })
 
@@ -331,6 +332,7 @@ export class ExaminatorStack extends cdk.Stack {
       layers: [layer],
       environment: {
         ACCESS_TOKEN_SECRET: 'ACCESS_TOKEN_SECRET',
+        EXAM_SESSION_TOKEN_SECRET: 'EXAM_SESSION_TOKEN_SECRET',
       },
     })
 
