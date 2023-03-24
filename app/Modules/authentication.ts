@@ -141,7 +141,7 @@ export const signIn = async (event: APIGatewayProxyEventV2, context: Context): P
 
     const session = await createSession({ userId: user.userId, userType: user.userType }, event.requestContext.http.sourceIp)
 
-    return new Response({ statusCode: 200, body: { session, profile: user } }).response
+    return new Response({ statusCode: 200, body: { session, user } }).response
   } catch (error) {
     return error instanceof Response ? error.response : new Response({ statusCode: 400, message: 'Generic Examinator Error', addons: { error: error.message } }).response
   }
