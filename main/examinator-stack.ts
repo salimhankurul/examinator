@@ -27,6 +27,8 @@ const updateUserLambdaName = 'UpdateUser'
 const signUpLambdaName = 'SignUp'
 const signInLambdaName = 'SignIn'
 const signOutLambdaName = 'SignOut'
+const forgetPasswordLinkLambdaName = 'ForgetPassword'
+const resetPasswordLambdaName = 'ResetPassword'
 
 const refreshTokenLambdaName = 'RefreshToken'
 
@@ -336,6 +338,34 @@ export class ExaminatorStack extends cdk.Stack {
       },
     })
 
+    const forgetPasswordLambda = new Function(this, forgetPasswordLinkLambdaName, {
+      functionName: forgetPasswordLinkLambdaName,
+      runtime: Runtime.NODEJS_16_X,
+      code: Code.fromAsset('dist'),
+      handler: 'Modules/password.forgetPasswordLink',
+      architecture: Architecture.ARM_64,
+      timeout: Duration.seconds(45),
+      role,
+      layers: [layer],
+      environment: {
+        FORGET_PASSWORD_TOKEN_SECRET: 'FORGET_PASSWORD_TOKEN_SECRET',
+      },
+    })
+
+    const resetPasswordLambda = new Function(this, resetPasswordLambdaName, {
+      functionName: resetPasswordLambdaName,
+      runtime: Runtime.NODEJS_16_X,
+      code: Code.fromAsset('dist'),
+      handler: 'Modules/password.resetPassword',
+      architecture: Architecture.ARM_64,
+      timeout: Duration.seconds(45),
+      role,
+      layers: [layer],
+      environment: {
+        FORGET_PASSWORD_TOKEN_SECRET: 'FORGET_PASSWORD_TOKEN_SECRET',
+      },
+    })
+
     // *******************************
     // *******************************
     // ************* HTTP  ***********
@@ -429,6 +459,22 @@ export class ExaminatorStack extends cdk.Stack {
       httpApi,
       routeKey: HttpRouteKey.with('/TEST', HttpMethod.ANY),
       integration: new HttpLambdaIntegration('testLambdaInegration', testLambda, {
+        payloadFormatVersion: PayloadFormatVersion.custom('2.0'),
+      }),
+    })
+
+    new HttpRoute(this, 'ExaminatorAPIRouteForgetPassword' + HttpMethod.ANY, {
+      httpApi,
+      routeKey: HttpRouteKey.with('/FORGET_PASSWORD', HttpMethod.ANY),
+      integration: new HttpLambdaIntegration('ForgetPasswordLambdaInegration', forgetPasswordLambda, {
+        payloadFormatVersion: PayloadFormatVersion.custom('2.0'),
+      }),
+    })
+
+    new HttpRoute(this, 'ExaminatorAPIRouteResetPassword' + HttpMethod.ANY, {
+      httpApi,
+      routeKey: HttpRouteKey.with('/RESET_PASSWORD', HttpMethod.ANY),
+      integration: new HttpLambdaIntegration('ResetPasswordLambdaInegration', resetPasswordLambda, {
         payloadFormatVersion: PayloadFormatVersion.custom('2.0'),
       }),
     })

@@ -13,7 +13,7 @@ const client = new DynamoDBClient({})
 
 const dynamo = DynamoDBDocumentClient.from(client)
 
-const encodePassword = (password: string) => crypto.createHash('sha3-512').update(password).digest('hex')
+export const encodePassword = (password: string) => crypto.createHash('sha3-512').update(password).digest('hex')
 
 // *******************************
 // *******************************

@@ -212,3 +212,10 @@ export const tokenMetaData = z.object({
   exp: z.number(),
 })
 export type TokenMetaData = z.infer<typeof tokenMetaData>
+
+export const forgetPasswordTokenModel = z.object({
+  email: z.string().email(),
+  iat: z.number(),
+  exp: z.number(),
+})
+export type ForgetPasswordTokenModel = z.infer<typeof forgetPasswordTokenModel>

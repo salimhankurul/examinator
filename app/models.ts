@@ -13,6 +13,17 @@ export const registerInput = z.object({
   courses: z.array(userCourse).default([]),
 })
 
+export const forgetInput = z.object({
+  email: z.string().email(),
+})
+
+export const resetPasswordInput = z.object({
+  token: z.string().min(1),
+  newPassword: z.string().min(1),
+  newPasswordConfirm: z.string().min(1),
+})
+
+
 export const signInInput = z.object({
   email: z.string().email(),
   password: z.string().min(1),

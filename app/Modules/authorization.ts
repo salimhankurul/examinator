@@ -4,7 +4,7 @@ import { DynamoDBDocumentClient, PutCommand, GetCommand, DeleteCommand } from '@
 import { sign, verify, decode } from 'jsonwebtoken'
 import { APIGatewayProxyEventV2, Context } from 'aws-lambda'
 import { Response, ExaminatorResponse } from '../response'
-import { TokenMetaData, SessionTableItem, ExamTicketTokenMetaData, FinishExamTokenMetaData } from '../types'
+import { TokenMetaData, SessionTableItem, ExamTicketTokenMetaData, FinishExamTokenMetaData, ForgetPasswordTokenModel } from '../types'
 import { userSessionsTableName } from '../utils'
 
 const { REFRESH_TOKEN_SECRET, ACCESS_TOKEN_SECRET } = process.env
@@ -77,14 +77,14 @@ export const terminateSession = async (_token: string, targetUserId: string): Pr
 export const validateSessionToken = async (_token: string, secret: string): Promise<TokenMetaData> => {
   let tokenMetaData: TokenMetaData
   try {
-    tokenMetaData = verify(_token, secret) as TokenMetaData
+    tokenMetaData = verify(_token, secret) as TokenMetaData // verify returns the payload of the token
   } catch (error) {
       throw new Response({ statusCode: 403, message: 'There has been a problem while authorizing your token.', addons: { tokenError: error.message } })
   }
 
   const dynamoReq = await dynamo.send(
-    new GetCommand({
-      TableName: userSessionsTableName,
+    new GetCommand({ // GetCommand is a DynamoDBDocumentClient command which returns a promise
+      TableName: userSessionsTableName, // here we should use the table name from the env
       Key: {
         userId: tokenMetaData.userId,
       },
@@ -119,6 +119,14 @@ export const validateFinishToken = async (_token: string, secret: string): Promi
   } catch (error) {
     // TODO ALERT HERE, this should not happen !
     throw new Response({ statusCode: 403, message: 'There has been a problem while authorizing your exam token.', addons: { tokenError: error.message } })
+  }
+}
+
+export const validateResetToken = async (_token: string, secret: string): Promise<ForgetPasswordTokenModel> => {
+  try {
+    return verify(_token, secret) as ForgetPasswordTokenModel
+  } catch (error) {
+    throw new Response({ statusCode: 403, message: 'There has been a problem while authorizing your reset token.', addons: { tokenError: error.message } })
   }
 }
 
