@@ -152,7 +152,7 @@ export class ExaminatorStack extends cdk.Stack {
         new PolicyStatement({
           effect: Effect.ALLOW,
           resources: ['*'],
-          actions: ['dynamodb:*', 'logs:*', 'events:*', 'lambda:*', 's3:*', 'cloudwatch:*', 'iam:*', 'cloudfront:*', 'states:*', 'apigateway:*', 'apigatewayv2:*', 'secretsmanager:*', 'sns:*', 'sqs:*', 'ssm:*'],
+          actions: ['dynamodb:*', 'logs:*', 'events:*', 'lambda:*', 's3:*', 'cloudwatch:*', 'iam:*', 'cloudfront:*', 'states:*', 'apigateway:*', 'apigatewayv2:*', 'secretsmanager:*', 'ses:*', 'sns:*', 'sqs:*', 'ssm:*'],
         }),
       )
     }
