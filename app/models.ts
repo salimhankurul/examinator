@@ -18,7 +18,6 @@ export const forgetInput = z.object({
 })
 
 export const resetPasswordInput = z.object({
-  token: z.string().min(1),
   newPassword: z.string().min(1),
   newPasswordConfirm: z.string().min(1),
 })

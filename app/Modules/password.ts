@@ -18,7 +18,7 @@ const sesClient = new SESv2Client({})
 const { FORGET_PASSWORD_TOKEN_SECRET } = process.env
 
 const FORGET_PASSWORD_TOKEN_TTL = 300
-const FROM_EMAIL_ADDRESS = 'examinator@info.com' // email adresimiz ne ?
+const FROM_EMAIL_ADDRESS = 'salimhankurul@gmail.com' // email adresimiz ne ?
 
 export const forgetPasswordLink = async (event: APIGatewayProxyEventV2): Promise<ExaminatorResponse> => {
   try {
@@ -54,6 +54,8 @@ export const forgetPasswordLink = async (event: APIGatewayProxyEventV2): Promise
 
     const resetLink = `https://examinator.com/reset-password?token=${forgetPasswordToken}`
 
+    console.log(resetLink)
+
     const params: SendEmailCommandInput = {
       Content: {
         Simple: {
@@ -78,7 +80,6 @@ export const forgetPasswordLink = async (event: APIGatewayProxyEventV2): Promise
     return new Response({
       statusCode: 200,
       body: {
-        resetLink,
         message: 'Email sent',
       },
     }).response
@@ -95,13 +96,15 @@ export const resetPassword = async (event: APIGatewayProxyEventV2): Promise<Exam
       throw new Response({ statusCode: 400, message: 'Woops! It looks like you sent us the wrong data. Double-check your request and try again.', addons: { issues: input.error.issues } })
     }
 
-    const { newPassword, newPasswordConfirm, token } = input.data
+    const { newPassword, newPasswordConfirm } = input.data
 
     if (newPassword !== newPasswordConfirm) {
       throw new Response({ statusCode: 400, message: 'Passwords do not match' })
     }
 
-    const forgetPasswordToken = await validateResetToken(token, FORGET_PASSWORD_TOKEN_SECRET)
+    const reset_token = event.headers['reset-token']
+
+    const forgetPasswordToken = await validateResetToken(reset_token, FORGET_PASSWORD_TOKEN_SECRET)
 
     const updateParams: UpdateCommandInput = {
       TableName: authenticationsTableName, // replace with your table name
