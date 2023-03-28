@@ -1,5 +1,5 @@
 {
-  "app": "npx ts-node --prefer-ts-exts main/xor.ts",
+  "app": "npx ts-node --prefer-ts-exts main/examinator-stack.ts",
   "watch": {
     "include": [
       "**"

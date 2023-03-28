@@ -1,21 +1,19 @@
 import crypto from 'crypto'
-import { DynamoDBClient } from '@aws-sdk/client-dynamodb'
+import { ConditionalCheckFailedException, DynamoDBClient } from '@aws-sdk/client-dynamodb'
 import { DynamoDBDocumentClient, PutCommand, GetCommand, DeleteCommand } from '@aws-sdk/lib-dynamodb'
 import { APIGatewayProxyEventV2, Context } from 'aws-lambda'
 import { v4 as uuidv4 } from 'uuid'
 import { createSession, terminateSession } from './authorization'
 import { signInInput, registerInput, signOutInput } from '../models'
 import { ExaminatorResponse, Response } from '../response'
-import { AuthenticationTableItem, UserProfileItem } from '../types'
-
-const AuthenticationTable = 'AuthenticationTable'
-const ProfileTable = 'ProfileTable'
+import { AuthenticationTableItem, courses, UsersTableItem } from '../types'
+import { authenticationsTableName, usersTableName } from '../utils'
 
 const client = new DynamoDBClient({})
 
 const dynamo = DynamoDBDocumentClient.from(client)
 
-const encodePassword = (password: string) => crypto.createHash('sha3-512').update(password).digest('hex')
+export const encodePassword = (password: string) => crypto.createHash('sha3-512').update(password).digest('hex')
 
 // *******************************
 // *******************************
@@ -35,50 +33,58 @@ export const signUp = async (event: APIGatewayProxyEventV2, context: Context): P
       throw new Response({ statusCode: 400, message: 'Woops! It looks like you sent us the wrong data. Double-check your request and try again.', addons: { issues: _input.error.issues } })
     }
 
-    const { email, password, userType } = _input.data
+    const { email, password, userType, firstName, lastName, university, universityPersonalId, courses: inputCourses } = _input.data
 
-    const checkExistingUser = await dynamo.send(
-      new GetCommand({
-        TableName: AuthenticationTable,
-        Key: {
-          email,
-        },
-      }),
-    )
+    const badCourses = inputCourses.filter((_course) => !courses.find((c) => c.id === _course.id))
 
-    if (checkExistingUser.Item) {
-      throw new Response({ statusCode: 400, message: 'User with this email already exists !', addons: { email } })
+    if (badCourses.length > 0) {
+      throw new Response({ statusCode: 400, message: 'We dont have some of these courses in our database', addons: { badCourses } })
     }
+
     const newId = uuidv4().replace(/-/g, '')
 
-    const authDB = await dynamo.send(
-      new PutCommand({
-        TableName: AuthenticationTable,
-        Item: {
-          email,
-          password: encodePassword(password),
-          userId: newId,
-        } as AuthenticationTableItem,
-      }),
-    )
+    try {
+      const Item: AuthenticationTableItem = {
+        email,
+        password: encodePassword(password),
+        userId: newId,
+      }
+      await dynamo.send(
+        new PutCommand({
+          TableName: authenticationsTableName,
+          Item,
+          ConditionExpression: 'attribute_not_exists(email)',
+        }),
+      )
+    } catch (error) {
+      if (error instanceof ConditionalCheckFailedException) {
+        throw new Response({ statusCode: 400, message: 'User with this email already exists !', addons: { email } })
+      } else {  
+        throw new Response({ statusCode: 400, message: 'Auth Database Error, please contact admin !', addons: { error } })
+      }
+    }
 
-    if (authDB.$metadata.httpStatusCode !== 200) {
-      throw new Response({ statusCode: 400, message: 'Database Error, please contact admin !', addons: { error: authDB } })
+    const user: UsersTableItem = {
+      userId: newId,
+      userType,
+      email,
+      firstName,
+      lastName,
+      university,
+      universityPersonalId,
+      courses,
+      exams: {}
     }
 
     const profileDB = await dynamo.send(
       new PutCommand({
-        TableName: ProfileTable,
-        Item: {
-          userId: newId,
-          userType,
-          email,
-        },
-      }),
+        TableName: usersTableName,
+        Item: user,
+      })
     )
 
     if (profileDB.$metadata.httpStatusCode !== 200) {
-      throw new Response({ statusCode: 400, message: 'Database Error, please contact admin !', addons: { error: profileDB } })
+      throw new Response({ statusCode: 400, message: 'User Database Error, please contact admin !', addons: { error: profileDB } })
     }
 
     const session = await createSession({ userId: newId, userType }, event.requestContext.http.sourceIp)
@@ -103,39 +109,39 @@ export const signIn = async (event: APIGatewayProxyEventV2, context: Context): P
 
     const { email, password: recivedPassword } = _input.data
 
-    const authDB = await dynamo.send(
+    const _auth = await dynamo.send(
       new GetCommand({
-        TableName: AuthenticationTable,
+        TableName: authenticationsTableName,
         Key: {
           email,
         },
       }),
     )
 
-    const authInfo = authDB.Item as AuthenticationTableItem
+    const auth = _auth.Item as AuthenticationTableItem
 
-    if (!authInfo || !authInfo.password || authInfo.password !== encodePassword(recivedPassword)) {
+    if (!auth || !auth.password || auth.password !== encodePassword(recivedPassword)) {
       throw new Response({ statusCode: 400, message: 'User with this email does not exist or Incorrect password !' })
     }
 
-    const profileDB = await dynamo.send(
+    const _user = await dynamo.send(
       new GetCommand({
-        TableName: ProfileTable,
+        TableName: usersTableName,
         Key: {
-          userId: authInfo.userId,
+          userId: auth.userId,
         },
       }),
     )
 
-    const profileInfo = profileDB.Item as UserProfileItem
+    const user = _user.Item as UsersTableItem
 
-    if (!profileInfo) {
+    if (!user) {
       throw new Response({ statusCode: 400, message: 'Error accured while trying to find user profile' })
     }
 
-    const session = await createSession({ userId: profileInfo.userId, userType: profileInfo.userType }, event.requestContext.http.sourceIp)
+    const session = await createSession({ userId: user.userId, userType: user.userType }, event.requestContext.http.sourceIp)
 
-    return new Response({ statusCode: 200, body: session }).response
+    return new Response({ statusCode: 200, body: { session, user } }).response
   } catch (error) {
     return error instanceof Response ? error.response : new Response({ statusCode: 400, message: 'Generic Examinator Error', addons: { error: error.message } }).response
   }
@@ -153,7 +159,7 @@ export const signOut = async (event: APIGatewayProxyEventV2, context: Context): 
       throw new Response({ statusCode: 400, message: 'Woops! It looks like you sent us the wrong data. Double-check your request and try again.', addons: { issues: _input.error.issues } })
     }
 
-    const _token = event.headers['_token']
+    const _token = event.headers['access-token']
 
     const res = await terminateSession(_token, _input.data.userId)
 

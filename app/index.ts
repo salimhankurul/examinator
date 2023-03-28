@@ -14,7 +14,7 @@ export const test = async (event: APIGatewayProxyEventV2, context: Context) => {
 
     const input = JSON.parse(event.body || '{}')
 
-    const _token = event.headers['_token']
+    const _token = event.headers['access-token']
 
     const auth = await validateSessionToken(_token, ACCESS_TOKEN_SECRET)
 

@@ -1,39 +1,19 @@
 import crypto from 'crypto'
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb'
 import { DynamoDBDocumentClient, PutCommand, GetCommand, DeleteCommand } from '@aws-sdk/lib-dynamodb'
-import { sign, verify as JWTVerify } from 'jsonwebtoken'
+import { sign, verify, decode } from 'jsonwebtoken'
 import { APIGatewayProxyEventV2, Context } from 'aws-lambda'
 import { Response, ExaminatorResponse } from '../response'
-import { ValidateTokenResponse, TokenMetaData, SessionTableItem } from '../types'
+import { TokenMetaData, SessionTableItem, ExamTicketTokenMetaData, FinishExamTokenMetaData, ForgetPasswordTokenModel } from '../types'
+import { userSessionsTableName } from '../utils'
 
 const { REFRESH_TOKEN_SECRET, ACCESS_TOKEN_SECRET } = process.env
-const ACCESS_TOKEN_TTL = 300
-const REFRESH_TOKEN_TTL = 600
-const SESSION_TABLE = 'SessionTable'
+const ACCESS_TOKEN_TTL = 30000
+const REFRESH_TOKEN_TTL = 60000
 
 const client = new DynamoDBClient({})
 
 const dynamo = DynamoDBDocumentClient.from(client)
-
-// *******************************
-// *******************************
-// *********** TOKEN *************
-// *******************************
-// *******************************
-
-export const verifyToken = (token: string, secret: string): ValidateTokenResponse => {
-  try {
-    if (!secret || !token) {
-      throw new Response({ statusCode: 403, message: 'There has been problem whit your token', addons: { errorCode: 0xff897 } })
-    }
-
-    return { tokenMetaData: JWTVerify(token, secret) as TokenMetaData }
-  } catch (error) {
-    return {
-      error: error.message,
-    }
-  }
-}
 
 // *******************************
 // *******************************
@@ -60,7 +40,7 @@ export const createSession = async ({ userId, userType }: any, IP: string) => {
 
   await dynamo.send(
     new PutCommand({
-      TableName: SESSION_TABLE,
+      TableName: userSessionsTableName,
       Item: sessionItem,
     }),
   )
@@ -69,10 +49,11 @@ export const createSession = async ({ userId, userType }: any, IP: string) => {
 }
 
 export const terminateSession = async (_token: string, targetUserId: string): Promise<void> => {
-  const { tokenMetaData, error } = verifyToken(_token, ACCESS_TOKEN_SECRET)
-
-  if (error) {
-    throw new Response({ statusCode: 403, message: 'There has been a problem while authorizing your token.', addons: { tokenError: error } })
+  let tokenMetaData: TokenMetaData
+  try {
+    tokenMetaData = verify(_token, ACCESS_TOKEN_SECRET) as TokenMetaData
+  } catch (error) {
+      throw new Response({ statusCode: 403, message: 'There has been a problem while authorizing your token.', addons: { tokenError: error.message } })
   }
 
   if (tokenMetaData.userId !== targetUserId && tokenMetaData.userType !== 'admin') {
@@ -81,7 +62,7 @@ export const terminateSession = async (_token: string, targetUserId: string): Pr
 
   const dynamoReq = await dynamo.send(
     new DeleteCommand({
-      TableName: SESSION_TABLE,
+      TableName: userSessionsTableName,
       Key: {
         userId: targetUserId,
       },
@@ -94,15 +75,16 @@ export const terminateSession = async (_token: string, targetUserId: string): Pr
 }
 
 export const validateSessionToken = async (_token: string, secret: string): Promise<TokenMetaData> => {
-  const { tokenMetaData, error } = verifyToken(_token, secret)
-
-  if (error) {
-    throw new Response({ statusCode: 403, message: 'There has been a problem while authorizing your token.', addons: { tokenError: error } })
+  let tokenMetaData: TokenMetaData
+  try {
+    tokenMetaData = verify(_token, secret) as TokenMetaData // verify returns the payload of the token
+  } catch (error) {
+      throw new Response({ statusCode: 403, message: 'There has been a problem while authorizing your token.', addons: { tokenError: error.message } })
   }
 
   const dynamoReq = await dynamo.send(
-    new GetCommand({
-      TableName: SESSION_TABLE,
+    new GetCommand({ // GetCommand is a DynamoDBDocumentClient command which returns a promise
+      TableName: userSessionsTableName, // here we should use the table name from the env
       Key: {
         userId: tokenMetaData.userId,
       },
@@ -118,6 +100,36 @@ export const validateSessionToken = async (_token: string, secret: string): Prom
   return tokenMetaData
 }
 
+
+export const validateExamTicketToken = async (_token: string, secret: string): Promise<ExamTicketTokenMetaData> => {
+  try {
+    return verify(_token, secret) as ExamTicketTokenMetaData
+  } catch (error) {
+      if (error.message === 'jwt expired') {
+        const decoded = decode(_token) as FinishExamTokenMetaData
+        throw new Response({ statusCode: 403, message: `This exam finished on ${new Date(decoded.exp * 1000).toUTCString()}, you no longer can submit answers !` })
+      }
+      throw new Response({ statusCode: 403, message: 'There has been a problem while authorizing your exam token.', addons: { tokenError: error.message } })
+  }
+}
+
+export const validateFinishToken = async (_token: string, secret: string): Promise<FinishExamTokenMetaData> => {
+  try {
+    return verify(_token, secret) as FinishExamTokenMetaData
+  } catch (error) {
+    // TODO ALERT HERE, this should not happen !
+    throw new Response({ statusCode: 403, message: 'There has been a problem while authorizing your exam token.', addons: { tokenError: error.message } })
+  }
+}
+
+export const validateResetToken = async (_token: string, secret: string): Promise<ForgetPasswordTokenModel> => {
+  try {
+    return verify(_token, secret) as ForgetPasswordTokenModel
+  } catch (error) {
+    throw new Response({ statusCode: 403, message: 'There has been a problem while authorizing your reset token.', addons: { tokenError: error.message } })
+  }
+}
+
 // *******************************
 // *******************************
 // ***** LAMBDA HANDLERS  ********
@@ -130,7 +142,7 @@ export const refreshToken = async (event: APIGatewayProxyEventV2, context: Conte
       return new Response({ statusCode: 200, body: {} }).response
     }
 
-    const _token = event.headers['_token'] // refresh token
+    const _token = event.headers['refresh-token'] // refresh token
     const reqIP = event.requestContext.http.sourceIp
 
     const tokenMetaData = await validateSessionToken(_token, REFRESH_TOKEN_SECRET)
