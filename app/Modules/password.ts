@@ -18,7 +18,7 @@ const sesClient = new SESv2Client({})
 const { FORGET_PASSWORD_TOKEN_SECRET } = process.env
 
 const FORGET_PASSWORD_TOKEN_TTL = 300
-const FROM_EMAIL_ADDRESS = 'salimhankurul@gmail.com' // email adresimiz ne ?
+const FROM_EMAIL_ADDRESS = 'salimhankurul@gmail.com'
 
 export const forgetPasswordLink = async (event: APIGatewayProxyEventV2): Promise<ExaminatorResponse> => {
   try {
@@ -77,12 +77,7 @@ export const forgetPasswordLink = async (event: APIGatewayProxyEventV2): Promise
 
     await sesClient.send(new SendEmailCommand(params))
 
-    return new Response({
-      statusCode: 200,
-      body: {
-        message: 'Email sent',
-      },
-    }).response
+    return new Response({statusCode: 200, body: { message: 'Email sent' } }).response
   } catch (error) {
     return error instanceof Response ? error.response : new Response({ statusCode: 400, message: 'Reset Link Error', addons: { error: error.message } }).response
   }

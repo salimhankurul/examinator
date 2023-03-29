@@ -1,5 +1,6 @@
 import { z } from 'zod'
-import { userType, examsQuestion, userExam, userCourse } from './types'
+import dayjs from "dayjs";
+import { userType, userCourse } from './types'
 
 export const registerInput = z.object({
   email: z.string().email(),
@@ -48,16 +49,16 @@ const examQuestionInput = z.object({
   ),
 })
 
-// TODO: isQuestionsRandomized should be optional
-// TODO: isOptionsRandomized should be optional
 export const createExamInput = z.object({
   name: z.string(),
   courseId: z.string(),
   description: z.string(),
   examQuestions: z.array(examQuestionInput),
   minimumPassingScore: z.number(),
-  startDate: z.string(),
+  startDate: z.number(), // in unix timestamp (seconds)
   duration: z.number(), // in minutes
+  isOptionsRandomized: z.boolean(),
+  isQuestionsRandomized: z.boolean(),
 })
 export type CreateExamInput = z.infer<typeof createExamInput>
 

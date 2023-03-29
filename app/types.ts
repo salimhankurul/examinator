@@ -94,6 +94,7 @@ export const userExam = z.object({
   courseId: z.string(),
   courseName: z.string(),
   startDate: z.string(),
+  endDate: z.string(),
   duration: z.number(), // in minutes
   score: z.number(),
   isCreator: z.boolean(), // when true, the user is teacher who created the exam
@@ -158,6 +159,7 @@ export const examTableItem = z.object({
   description: z.string(),
   minimumPassingScore: z.number(),
   startDate: z.string(),
+  endDate: z.string(),
   duration: z.number(), // in minutes
   createdAt: z.string(),
   createdBy: z.string(),

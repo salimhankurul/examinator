@@ -6,12 +6,16 @@ import { DynamoDBClient } from '@aws-sdk/client-dynamodb'
 import { v4 as uuidv4 } from 'uuid'
 import { sign } from 'jsonwebtoken'
 import { Readable } from 'stream'
-
 import { validateExamTicketToken, validateFinishToken, validateSessionToken } from './authorization'
 import { Response, ExaminatorResponse } from '../response'
 import { examFinished, examinatorBucket, examSessionsTableName, examsTableName, examStarted, getExamFinishExecuteAtDate, getExamFinishTime, getExamQuestionsS3Path, getExamTokenExpirationTime, nanoid, streamToString, usersTableName } from '../utils'
 import { ExamS3Item, ExamTableItem, ExamTicketTokenMetaData, ExamSessionTableItem, courses, UsersTableItem, UsersTableItemExam, examStatus, FinishExamTokenMetaData } from '../types'
 import { createExamInput, CreateExamInput, finisherExamInput, joinExamInput, submitAnswerInput } from '../models'
+
+import dayjs from "dayjs";
+import relativeTime from "dayjs/plugin/relativeTime";
+
+dayjs.extend(relativeTime)
 
 const { ACCESS_TOKEN_SECRET, EXAM_SESSION_TOKEN_SECRET, FINISH_EXAM_TOKEN_SECRET, FINISHER_MACHINE_ARN } = process.env
 
@@ -46,8 +50,15 @@ export const createExam = async (event: APIGatewayProxyEventV2, context: Context
 
     const input = _input.data
 
-    if (new Date(input.startDate).getTime() < Date.now()) {
-      throw new Response({ statusCode: 400, message: 'Exam start date is in the past !' })
+    const _start = dayjs(input.startDate)
+    const _end = _start.add(input.duration, 'minute')
+
+    if (_start.isBefore(Date.now())) {
+      throw new Response({ statusCode: 400, message: 'Exam start date is in the past !', addons: { _start: _start.toISOString() } })
+    }
+
+    if (_end.isBefore(Date.now())) {
+      throw new Response({ statusCode: 400, message: 'Exam end date is in the past !' })
     }
 
     const course = courses.find((course) => course.id === input.courseId)
@@ -112,7 +123,8 @@ export const createExam = async (event: APIGatewayProxyEventV2, context: Context
       name: input.name,
       description: input.description,
       minimumPassingScore: input.minimumPassingScore,
-      startDate: input.startDate,
+      startDate: _start.toISOString(),
+      endDate: _end.toISOString(),
       duration: input.duration,
       questionsMetaData,
       createdAt: new Date().toUTCString(),
@@ -134,13 +146,13 @@ export const createExam = async (event: APIGatewayProxyEventV2, context: Context
     }
    
     // we add 10 seconds since, the finisher machine will start after 5 seconds from finish time
-    const timeLeftToFinish = getExamTokenExpirationTime(input.startDate, input.duration) + 10 // in seconds
+    const timeLeftToFinish = _end.add(10, 'second').diff(dayjs(), 'second');
     const finisherToken = sign(finishTokenData, FINISH_EXAM_TOKEN_SECRET,  { expiresIn: timeLeftToFinish });
-    
+
     // start finisher machine after 5 seconds from finish time
     const startExecutionParams: StartExecutionCommandInput = {
       stateMachineArn: FINISHER_MACHINE_ARN,
-      input: JSON.stringify({ executeAt: getExamFinishExecuteAtDate(input.startDate, input.duration), finisherToken }),
+      input: JSON.stringify({ executeAt: _end.add(5, 'second').toISOString(), finisherToken }),
     }
 
     const startExecutionCommand = new StartExecutionCommand(startExecutionParams)
@@ -246,12 +258,16 @@ export const joinExam = async (event: APIGatewayProxyEventV2, context: Context):
       throw new Response({ statusCode: 400, message: 'This exam doesnt exist !', addons: { examId, courseId } })
     }
 
-    if (!examStarted(exam.startDate)) {
-      throw new Response({ statusCode: 400, message: 'This exam is not started yet ! It will start on ' + exam.startDate })
+    const now = dayjs()
+    const _start = dayjs(exam.startDate)
+    const _end = dayjs(exam.endDate)
+
+    if (_start.isAfter(now)) {
+      throw new Response({ statusCode: 400, message: `This exam is not started yet ! It will start at ${_start.format('YYYY-MM-DD HH:mm:ss')}` })
     }
 
-    if (examFinished(exam.startDate, exam.duration) || exam.status === examStatus.enum.finished) {
-      throw new Response({ statusCode: 400, message: 'This exam is finished ! You cannot join anymore !' })
+    if (_end.isBefore(now)) {
+      throw new Response({ statusCode: 400, message: `This exam is finished at ${_end.format('YYYY-MM-DD HH:mm:ss')} ! You cannot join anymore !` })
     }
 
     if (exam.status === examStatus.enum.canceled) {
@@ -306,8 +322,7 @@ export const joinExam = async (event: APIGatewayProxyEventV2, context: Context):
       courseId: exam.courseId,
     }
 
-    const timeLeftToFinish = getExamTokenExpirationTime(exam.startDate, exam.duration)
-
+    const timeLeftToFinish = _end.subtract(1, 'second').diff(dayjs(), 'second');
     const userExamToken = sign(tokenData, EXAM_SESSION_TOKEN_SECRET, { expiresIn: timeLeftToFinish })
 
     const examSessions_PutCommand = new PutCommand({
@@ -326,6 +341,7 @@ export const joinExam = async (event: APIGatewayProxyEventV2, context: Context):
       courseId: exam.courseId,
       courseName: exam.courseName,
       startDate: exam.startDate,
+      endDate: exam.endDate,
       duration: exam.duration,
       isCreator: false,
       status: examStatus.enum.normal,
