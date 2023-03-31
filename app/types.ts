@@ -165,6 +165,8 @@ export const examTableItem = z.object({
   createdBy: z.string(),
   questionsMetaData: z.record(z.string(), z.array(z.string())),
   status: examStatus,
+  isOptionsRandomized: z.boolean(),
+  isQuestionsRandomized: z.boolean(),
 })
 export type ExamTableItem = z.infer<typeof examTableItem>
 

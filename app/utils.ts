@@ -29,30 +29,3 @@ export function nanoid(length: number): string {
 
   return result
 }
-
-export const getExamStartTime = (start: string,): number => {
-  return new Date(start).getTime()
-}
-
-export const getExamFinishTime = (start: string, duration: number): number => {
-  return (duration * 60 * 1000) + getExamStartTime(start)
-}
-
-// execute after 5 seconds to make sure the exam is finished
-export const getExamFinishExecuteAtDate = (start: string, duration: number): string => {
-  return new Date(getExamFinishTime(start, duration) + 5000).toISOString()
-}
-
-export const getExamTokenExpirationTime = (start: string, duration: number): number => { // in seconds
-  return ((getExamFinishTime(start, duration) - new Date().getTime()) / 1000) | 0
-}
-
-export const examFinished = (start: string, duration: number): boolean => {
-  const now = Date.now()
-  return now - getExamFinishTime(start, duration) > 0
-}
-
-export const examStarted = (start: string): boolean => {
-  const now = Date.now()
-  return now - getExamStartTime(start) > 0
-}

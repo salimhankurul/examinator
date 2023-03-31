@@ -8,7 +8,7 @@ import { sign } from 'jsonwebtoken'
 import { Readable } from 'stream'
 import { validateExamTicketToken, validateFinishToken, validateSessionToken } from './authorization'
 import { Response, ExaminatorResponse } from '../response'
-import { examFinished, examinatorBucket, examSessionsTableName, examsTableName, examStarted, getExamFinishExecuteAtDate, getExamFinishTime, getExamQuestionsS3Path, getExamTokenExpirationTime, nanoid, streamToString, usersTableName } from '../utils'
+import { examinatorBucket, examSessionsTableName, examsTableName, getExamQuestionsS3Path, nanoid, streamToString, usersTableName } from '../utils'
 import { ExamS3Item, ExamTableItem, ExamTicketTokenMetaData, ExamSessionTableItem, courses, UsersTableItem, UsersTableItemExam, examStatus, FinishExamTokenMetaData } from '../types'
 import { createExamInput, CreateExamInput, finisherExamInput, joinExamInput, submitAnswerInput } from '../models'
 
@@ -88,7 +88,7 @@ export const createExam = async (event: APIGatewayProxyEventV2, context: Context
     // set correct option id & remove isCorrect
     const examQuestions = questions.map((question) => ({
       ...question,
-      correctOptionId: question.options.find((option) => option.isCorrect)!.optionId,
+      correctOptionId: question.options.find((option) => option.isCorrect)!.optionId, // TODO make sure it finds at least 1 is correct
       options: question.options.map((option) => ({
         optionId: option.optionId,
         optionText: option.optionText,
@@ -130,6 +130,8 @@ export const createExam = async (event: APIGatewayProxyEventV2, context: Context
       createdAt: new Date().toUTCString(),
       createdBy: auth.userId,
       status: examStatus.enum.normal,
+      isOptionsRandomized: input.isOptionsRandomized,
+      isQuestionsRandomized: input.isQuestionsRandomized,
     }
 
     const exams_PutCommand = new PutCommand({
@@ -322,7 +324,7 @@ export const joinExam = async (event: APIGatewayProxyEventV2, context: Context):
       courseId: exam.courseId,
     }
 
-    const timeLeftToFinish = _end.subtract(1, 'second').diff(dayjs(), 'second');
+    const timeLeftToFinish = _end.diff(dayjs(), 'second');
     const userExamToken = sign(tokenData, EXAM_SESSION_TOKEN_SECRET, { expiresIn: timeLeftToFinish })
 
     const examSessions_PutCommand = new PutCommand({
