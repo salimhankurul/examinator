@@ -294,6 +294,23 @@ export const joinExam = async (event: APIGatewayProxyEventV2, context: Context):
       correctOptionId: undefined,
     }))
 
+    //// randomize
+
+
+    if (exam.isQuestionsRandomized) {
+      examData.examQuestions = examData.examQuestions.map(value => ({ value, sort: Math.random() }))
+      .sort((a, b) => a.sort - b.sort)
+      .map(({ value }) => value)
+    } 
+
+    if (exam.isOptionsRandomized) {
+      for (const question of examData.examQuestions) {
+        question.options = question.options.map(value => ({ value, sort: Math.random() }))
+        .sort((a, b) => a.sort - b.sort)
+        .map(({ value }) => value)
+      }
+    } 
+
     // **********
     // check if user has already joined this exam, if already joined skip later parts
     // **********
