@@ -36,6 +36,10 @@ export class Response<T = unknown> extends Error {
 
   get response(): ExaminatorResponse {
     const body = this.body || { message: this.message, ...this.addons }
+
+    // @ts-ignore
+    body.success = this.statusCode >= 200 && this.statusCode < 300 ? true : false
+
     return {
       statusCode: this.statusCode,
       body: JSON.stringify(body),

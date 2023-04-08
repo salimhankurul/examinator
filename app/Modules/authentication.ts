@@ -163,7 +163,7 @@ export const signOut = async (event: APIGatewayProxyEventV2, context: Context): 
 
     const res = await terminateSession(_token, _input.data.userId)
 
-    return new Response({ statusCode: 200, body: { success: true, res } }).response
+    return new Response({ statusCode: 200, body: {  res } }).response
   } catch (error) {
     return error instanceof Response ? error.response : new Response({ message: 'Generic Examinator Error', statusCode: 400, addons: { error: error.message } }).response
   }

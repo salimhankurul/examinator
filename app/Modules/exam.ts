@@ -12,8 +12,8 @@ import { examinatorBucket, examSessionsTableName, examsTableName, getExamQuestio
 import { ExamS3Item, ExamTableItem, ExamTicketTokenMetaData, ExamSessionTableItem, courses, UsersTableItem, UsersTableItemExam, examStatus, FinishExamTokenMetaData } from '../types'
 import { createExamInput, finisherExamInput, joinExamInput, submitAnswerInput } from '../models'
 
-import dayjs from "dayjs";
-import relativeTime from "dayjs/plugin/relativeTime";
+import dayjs from 'dayjs'
+import relativeTime from 'dayjs/plugin/relativeTime'
 
 dayjs.extend(relativeTime)
 
@@ -146,10 +146,10 @@ export const createExam = async (event: APIGatewayProxyEventV2, context: Context
       examId,
       courseId: course.id,
     }
-   
+
     // we add 10 seconds since, the finisher machine will start after 5 seconds from finish time
-    const timeLeftToFinish = _end.add(10, 'second').diff(dayjs(), 'second');
-    const finisherToken = sign(finishTokenData, FINISH_EXAM_TOKEN_SECRET,  { expiresIn: timeLeftToFinish });
+    const timeLeftToFinish = _end.add(10, 'second').diff(dayjs(), 'second')
+    const finisherToken = sign(finishTokenData, FINISH_EXAM_TOKEN_SECRET, { expiresIn: timeLeftToFinish })
 
     // start finisher machine after 5 seconds from finish time
     const startExecutionParams: StartExecutionCommandInput = {
@@ -168,16 +168,15 @@ export const createExam = async (event: APIGatewayProxyEventV2, context: Context
     // **********
     // **********
 
-    return new Response({ statusCode: 200, body: { success: true, exam: db_exam } }).response
+    return new Response({ statusCode: 200, body: { exam: db_exam } }).response
   } catch (error) {
     console.log(error)
-    return error instanceof Response ? error.response : new Response({ message: 'Generic Examinator Error', statusCode: 400, addons: { error: error.message } }).response
+    return error instanceof Response ? error.response : new Response({ statusCode: 400, message: 'Generic Examinator Error', addons: { error: error.message } }).response
   }
 }
 
 export const finishExam = async (payload: any): Promise<ExaminatorResponse> => {
   try {
-
     const _input = finisherExamInput.safeParse(payload)
 
     if (_input.success === false) {
@@ -196,7 +195,7 @@ export const finishExam = async (payload: any): Promise<ExaminatorResponse> => {
     return new Response({ statusCode: 200, body: { success: true } }).response
   } catch (error) {
     console.log(error)
-    return error instanceof Response ? error.response : new Response({ message: 'Generic Examinator Error', statusCode: 400, addons: { error: error.message } }).response
+    return error instanceof Response ? error.response : new Response({ statusCode: 400, message: 'Generic Examinator Error', addons: { error: error.message } }).response
   }
 }
 
@@ -298,18 +297,20 @@ export const joinExam = async (event: APIGatewayProxyEventV2, context: Context):
     // **********
 
     if (exam.isQuestionsRandomized) {
-      examData.examQuestions = examData.examQuestions.map(value => ({ value, sort: Math.random() }))
-      .sort((a, b) => a.sort - b.sort)
-      .map(({ value }) => value)
-    } 
+      examData.examQuestions = examData.examQuestions
+        .map((value) => ({ value, sort: Math.random() }))
+        .sort((a, b) => a.sort - b.sort)
+        .map(({ value }) => value)
+    }
 
     if (exam.isOptionsRandomized) {
       for (const question of examData.examQuestions) {
-        question.options = question.options.map(value => ({ value, sort: Math.random() }))
-        .sort((a, b) => a.sort - b.sort)
-        .map(({ value }) => value)
+        question.options = question.options
+          .map((value) => ({ value, sort: Math.random() }))
+          .sort((a, b) => a.sort - b.sort)
+          .map(({ value }) => value)
       }
-    } 
+    }
 
     // **********
     // check if user has already joined this exam, if already joined skip later parts
@@ -328,7 +329,7 @@ export const joinExam = async (event: APIGatewayProxyEventV2, context: Context):
     const examSession = _examSession.Item as ExamSessionTableItem
 
     if (examSession) {
-      return new Response({ statusCode: 202, body: { success: true, data: { token: examSession.userExamToken, data: examData } } }).response
+      return new Response({ statusCode: 202, body: { data: { token: examSession.userExamToken, data: examData } } }).response
     }
 
     // **********
@@ -341,7 +342,7 @@ export const joinExam = async (event: APIGatewayProxyEventV2, context: Context):
       courseId: exam.courseId,
     }
 
-    const timeLeftToFinish = _end.diff(dayjs(), 'second');
+    const timeLeftToFinish = _end.diff(dayjs(), 'second')
     const userExamToken = sign(tokenData, EXAM_SESSION_TOKEN_SECRET, { expiresIn: timeLeftToFinish })
 
     const examSessions_PutCommand = new PutCommand({
@@ -388,11 +389,11 @@ export const joinExam = async (event: APIGatewayProxyEventV2, context: Context):
 
     // **********
 
-    return new Response({ statusCode: 200, body: { success: true, data: { token: userExamToken, data: examData } } }).response
+    return new Response({ statusCode: 200, body: { data: { token: userExamToken, data: examData } } }).response
   } catch (error) {
     console.log(error)
 
-    return error instanceof Response ? error.response : new Response({ message: 'Generic Examinator Error', statusCode: 400, addons: { error: error.message } }).response
+    return error instanceof Response ? error.response : new Response({ statusCode: 400, message: 'Generic Examinator Error', addons: { error: error.message } }).response
   }
 }
 
@@ -519,11 +520,18 @@ export const getExams = async (event: APIGatewayProxyEventV2, context: Context):
 
     const reponses = await Promise.all(workers)
 
-    // TODO reponses
+    const exams: any[] = []
 
-    return new Response({ statusCode: 200, body: { success: true, reponses } }).response
+    for (const response of reponses) {
+      for (const item of response.Items) {
+        const { questionsMetaData, isOptionsRandomized, isQuestionsRandomized, ...rest } = item
+        exams.push(rest)
+      }
+    }
+
+    return new Response({ statusCode: 200, body: { exams } }).response
   } catch (error) {
     console.log(error)
-    return error instanceof Response ? error.response : new Response({ message: 'Generic Examinator Error', statusCode: 400, addons: { error: error.message } }).response
+    return error instanceof Response ? error.response : new Response({ statusCode: 400, message: 'Generic Examinator Error', addons: { error: error.message } }).response
   }
 }

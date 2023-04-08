@@ -62,7 +62,7 @@ export const updateUser = async (event: APIGatewayProxyEventV2, context: Context
       throw new Response({ statusCode: 400, message: 'Database PUT Error, please contact admin !', addons: { error: newProfile } })
     }
 
-    return new Response({ statusCode: 200, body: { success: true, profile: newProfileItem } }).response
+    return new Response({ statusCode: 200, body: {  profile: newProfileItem } }).response
   } catch (error) {
     return error instanceof Response ? error.response : new Response({ message: 'Generic Examinator Error', statusCode: 400, addons: { error: error.message } }).response
   }
@@ -93,7 +93,7 @@ export const getUser = async (event: APIGatewayProxyEventV2, context: Context): 
       throw new Response({ statusCode: 404, message: 'Couldnt find any user with this id', addons: { userId: auth.userId } })
     }
 
-    return new Response({ statusCode: 200, body: { success: true, user } }).response
+    return new Response({ statusCode: 200, body: {  user } }).response
   } catch (error) {
     return error instanceof Response ? error.response : new Response({ message: 'Generic Examinator Error', statusCode: 400, addons: { error: error.message } }).response
   }
