@@ -7,7 +7,7 @@ import { Construct } from 'constructs'
 import { RestApi, LambdaIntegration } from 'aws-cdk-lib/aws-apigateway'
 import { Duration } from 'aws-cdk-lib'
 import { Function, Architecture, Runtime, Code, LayerVersion } from 'aws-cdk-lib/aws-lambda'
-import { AttributeType, BillingMode, StreamViewType, Table } from 'aws-cdk-lib/aws-dynamodb'
+import { AttributeType, BillingMode, ProjectionType, StreamViewType, Table } from 'aws-cdk-lib/aws-dynamodb'
 import { Effect, PolicyStatement, Role, ServicePrincipal } from 'aws-cdk-lib/aws-iam'
 import { DomainName, HttpApi, HttpMethod, HttpRoute, HttpRouteKey, PayloadFormatVersion } from '@aws-cdk/aws-apigatewayv2-alpha'
 import { HttpLambdaIntegration } from '@aws-cdk/aws-apigatewayv2-integrations-alpha'
@@ -20,6 +20,7 @@ const createExamLambdaName = 'CreateExam'
 const joinExamLambdaName = 'JoinExam'
 const finishExamLambdaName = 'FinishExam'
 const submitToExamLambdaName = 'SubmitToExam'
+const getExamsLambdaName = 'GetExams'
 
 const getUserLambdaName = 'GetUser'
 const updateUserLambdaName = 'UpdateUser'
@@ -114,14 +115,19 @@ export class ExaminatorStack extends cdk.Stack {
         name: 'examId',
         type: AttributeType.STRING,
       },
-      sortKey: {
-        name: 'courseId',
-        type: AttributeType.STRING,
-      },
       billingMode: BillingMode.PAY_PER_REQUEST,
       stream: StreamViewType.NEW_IMAGE,
       tableName: examsTableName,
     })
+
+    Exams.addGlobalSecondaryIndex({
+      indexName: "courseIdIndex",
+      partitionKey: {
+        name: "courseId",
+        type: AttributeType.STRING,
+      },
+      projectionType: ProjectionType.ALL,
+    });
 
     const ExamSessions = new Table(this, examSessionsTableName, {
       partitionKey: {
@@ -366,6 +372,20 @@ export class ExaminatorStack extends cdk.Stack {
       },
     })
 
+    const getExamsLambda = new Function(this, getExamsLambdaName, {
+      functionName: getExamsLambdaName,
+      runtime: Runtime.NODEJS_16_X,
+      code: Code.fromAsset('dist'),
+      handler: 'Modules/exam.getExams',
+      architecture: Architecture.ARM_64,
+      timeout: Duration.seconds(45),
+      role,
+      layers: [layer],
+      environment: {
+        ACCESS_TOKEN_SECRET: 'ACCESS_TOKEN_SECRET',
+      },
+    })
+
     // *******************************
     // *******************************
     // ************* HTTP  ***********
@@ -478,6 +498,15 @@ export class ExaminatorStack extends cdk.Stack {
         payloadFormatVersion: PayloadFormatVersion.custom('2.0'),
       }),
     })
+
+    new HttpRoute(this, 'ExaminatorAPIRoutegetExamsLambda' + HttpMethod.ANY, {
+      httpApi,
+      routeKey: HttpRouteKey.with('/GET_EXAMS', HttpMethod.ANY),
+      integration: new HttpLambdaIntegration('getExamsLambdaInegration', getExamsLambda, {
+        payloadFormatVersion: PayloadFormatVersion.custom('2.0'),
+      }),
+    })
+
   }
 }
 

@@ -1,8 +1,8 @@
-import { PutCommand, GetCommand, DeleteCommand, UpdateCommand, UpdateCommandInput, PutCommandInput } from '@aws-sdk/lib-dynamodb'
+import { PutCommand, GetCommand, DeleteCommand, UpdateCommand, UpdateCommandInput, PutCommandInput, QueryCommand } from '@aws-sdk/lib-dynamodb'
 import { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3'
 import { SFNClient, StartExecutionCommand, StartExecutionCommandInput } from '@aws-sdk/client-sfn'
 import { APIGatewayProxyEventV2, Context } from 'aws-lambda'
-import { DynamoDBClient } from '@aws-sdk/client-dynamodb'
+import { BatchGetItemCommand, DynamoDBClient } from '@aws-sdk/client-dynamodb'
 import { v4 as uuidv4 } from 'uuid'
 import { sign } from 'jsonwebtoken'
 import { Readable } from 'stream'
@@ -10,7 +10,7 @@ import { validateExamTicketToken, validateFinishToken, validateSessionToken } fr
 import { Response, ExaminatorResponse } from '../response'
 import { examinatorBucket, examSessionsTableName, examsTableName, getExamQuestionsS3Path, nanoid, streamToString, usersTableName } from '../utils'
 import { ExamS3Item, ExamTableItem, ExamTicketTokenMetaData, ExamSessionTableItem, courses, UsersTableItem, UsersTableItemExam, examStatus, FinishExamTokenMetaData } from '../types'
-import { createExamInput, CreateExamInput, finisherExamInput, joinExamInput, submitAnswerInput } from '../models'
+import { createExamInput, finisherExamInput, joinExamInput, submitAnswerInput } from '../models'
 
 import dayjs from "dayjs";
 import relativeTime from "dayjs/plugin/relativeTime";
@@ -123,8 +123,8 @@ export const createExam = async (event: APIGatewayProxyEventV2, context: Context
       name: input.name,
       description: input.description,
       minimumPassingScore: input.minimumPassingScore,
-      startDate: _start.toISOString(),
-      endDate: _end.toISOString(),
+      startDate: _start.unix() * 1000,
+      endDate: _end.unix() * 1000,
       duration: input.duration,
       questionsMetaData,
       createdAt: new Date().toUTCString(),
@@ -215,7 +215,7 @@ export const joinExam = async (event: APIGatewayProxyEventV2, context: Context):
       throw new Response({ statusCode: 400, message: 'Woops! It looks like you sent us the wrong data. Double-check your request and try again.', addons: { issues: _input.error.issues } })
     }
 
-    const { examId, courseId } = _input.data
+    const { examId } = _input.data
 
     // **********
     // check if user is enrolled in course
@@ -236,10 +236,6 @@ export const joinExam = async (event: APIGatewayProxyEventV2, context: Context):
       throw new Response({ statusCode: 404, message: 'Couldnt find any user with this id', addons: { userId: auth.userId } })
     }
 
-    if (auth.userType === 'student' && user.courses.find((course) => course.id === courseId)) {
-      throw new Response({ statusCode: 400, message: 'You are not enrolled in this course !' })
-    }
-
     // **********
     // check recived exam is valid
     // **********
@@ -249,7 +245,6 @@ export const joinExam = async (event: APIGatewayProxyEventV2, context: Context):
         TableName: examsTableName,
         Key: {
           examId,
-          courseId,
         },
       }),
     )
@@ -257,7 +252,11 @@ export const joinExam = async (event: APIGatewayProxyEventV2, context: Context):
     const exam = examGetDB.Item as ExamTableItem
 
     if (!exam) {
-      throw new Response({ statusCode: 400, message: 'This exam doesnt exist !', addons: { examId, courseId } })
+      throw new Response({ statusCode: 400, message: 'This exam doesnt exist !', addons: { examId } })
+    }
+
+    if (auth.userType === 'student' && user.courses.find((course) => course.id === exam.courseId)) {
+      throw new Response({ statusCode: 400, message: `You are not enrolled in ${exam.courseId} !` })
     }
 
     const now = dayjs()
@@ -283,7 +282,7 @@ export const joinExam = async (event: APIGatewayProxyEventV2, context: Context):
     const s3_exam = await s3.send(
       new GetObjectCommand({
         Bucket: examinatorBucket,
-        Key: getExamQuestionsS3Path(courseId, examId),
+        Key: getExamQuestionsS3Path(exam.courseId, examId),
       }),
     )
 
@@ -294,8 +293,9 @@ export const joinExam = async (event: APIGatewayProxyEventV2, context: Context):
       correctOptionId: undefined,
     }))
 
-    //// randomize
-
+    // **********
+    // Randomize questions and options if needed
+    // **********
 
     if (exam.isQuestionsRandomized) {
       examData.examQuestions = examData.examQuestions.map(value => ({ value, sort: Math.random() }))
@@ -427,7 +427,6 @@ export const submitToExam = async (event: APIGatewayProxyEventV2, context: Conte
         TableName: examsTableName,
         Key: {
           examId: examAuth.examId,
-          courseId: examAuth.courseId,
         },
       }),
     )
@@ -469,6 +468,60 @@ export const submitToExam = async (event: APIGatewayProxyEventV2, context: Conte
     await dynamo.send(new UpdateCommand(params))
 
     return new Response({ statusCode: 200, body: { success: true } }).response
+  } catch (error) {
+    console.log(error)
+    return error instanceof Response ? error.response : new Response({ message: 'Generic Examinator Error', statusCode: 400, addons: { error: error.message } }).response
+  }
+}
+
+export const getExams = async (event: APIGatewayProxyEventV2, context: Context): Promise<ExaminatorResponse> => {
+  try {
+    if (event.requestContext.http.method === 'OPTIONS') {
+      return new Response({ statusCode: 200, body: {} }).response
+    }
+
+    const accessToken = event.headers['access-token']
+    const auth = await validateSessionToken(accessToken, ACCESS_TOKEN_SECRET)
+
+    const _user = await dynamo.send(
+      new GetCommand({
+        TableName: usersTableName,
+        Key: {
+          userId: auth.userId,
+        },
+      }),
+    )
+
+    const user = _user.Item as UsersTableItem
+
+    if (!user) {
+      throw new Response({ statusCode: 404, message: 'Couldnt find any user with this id', addons: { userId: auth.userId } })
+    }
+
+    const currentTime = Date.now()
+    const targetCourseIds: string[] = user.courses.map((course) => course.id)
+
+    const workers = []
+
+    for (const courseId of targetCourseIds) {
+      const command = new QueryCommand({
+        TableName: examsTableName,
+        IndexName: 'courseIdIndex', // name of the GSI
+        KeyConditionExpression: 'courseId = :courseId',
+        FilterExpression: 'endDate >= :currentTime',
+        ExpressionAttributeValues: {
+          ':courseId': courseId,
+          ':currentTime': currentTime,
+        },
+      })
+      workers.push(dynamo.send(command))
+    }
+
+    const reponses = await Promise.all(workers)
+
+    // TODO reponses
+
+    return new Response({ statusCode: 200, body: { success: true, reponses } }).response
   } catch (error) {
     console.log(error)
     return error instanceof Response ? error.response : new Response({ message: 'Generic Examinator Error', statusCode: 400, addons: { error: error.message } }).response

@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import dayjs from "dayjs";
-import { userType, userCourse } from './types'
+import { userType, userCourse, courses } from './types'
 
 export const registerInput = z.object({
   email: z.string().email(),
@@ -67,10 +67,8 @@ export const submitAnswerInput = z.object({
   optionId: z.string(),
 })
 
-//TODO: why courseId is required?
 export const joinExamInput = z.object({
   examId: z.string(),
-  courseId: z.string(),
 })
 
 

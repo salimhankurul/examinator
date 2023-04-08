@@ -100,7 +100,6 @@ export const validateSessionToken = async (_token: string, secret: string): Prom
   return tokenMetaData
 }
 
-
 export const validateExamTicketToken = async (_token: string, secret: string): Promise<ExamTicketTokenMetaData> => {
   try {
     return verify(_token, secret) as ExamTicketTokenMetaData
