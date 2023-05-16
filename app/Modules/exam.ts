@@ -199,6 +199,7 @@ export const finishExam = async (payload: any): Promise<ExaminatorResponse> => {
   }
 }
 
+// TODO dont send entire "exam" just send names 
 export const joinExam = async (event: APIGatewayProxyEventV2, context: Context): Promise<ExaminatorResponse> => {
   try {
     if (event.requestContext.http.method === 'OPTIONS') {
@@ -329,7 +330,7 @@ export const joinExam = async (event: APIGatewayProxyEventV2, context: Context):
     const examSession = _examSession.Item as ExamSessionTableItem
 
     if (examSession) {
-      return new Response({ statusCode: 202, body: { data: { token: examSession.userExamToken, data: examData } } }).response
+      return new Response({ statusCode: 202, body: { token: examSession.userExamToken, examQuestions: examData.examQuestions, exam, userAnswers: examSession.userAnswers } }).response
     }
 
     // **********
@@ -389,7 +390,7 @@ export const joinExam = async (event: APIGatewayProxyEventV2, context: Context):
 
     // **********
 
-    return new Response({ statusCode: 200, body: { data: { token: userExamToken, data: examData } } }).response
+    return new Response({ statusCode: 200, body: { token: userExamToken, examQuestions: examData.examQuestions, exam } }).response
   } catch (error) {
     console.log(error)
 
