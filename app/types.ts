@@ -99,7 +99,7 @@ export const userExam = z.object({
   score: z.number(),
   isCreator: z.boolean(), // when true, the user is teacher who created the exam
   isPassed: z.boolean(),
-  status: examStatus,
+  examStatus: examStatus,
 })
 export type UsersTableItemExam = z.infer<typeof userExam>
 
@@ -164,7 +164,7 @@ export const examTableItem = z.object({
   createdAt: z.string(),
   createdBy: z.string(),
   questionsMetaData: z.record(z.string(), z.array(z.string())),
-  status: examStatus,
+  examStatus: examStatus,
   isOptionsRandomized: z.boolean(),
   isQuestionsRandomized: z.boolean(),
 })
@@ -184,6 +184,7 @@ export const examsQuestion = z.object({
   questionText: z.string(),
   correctOptionId: z.string(),
   options: z.array(examOption),
+  points: z.number(),
 })
 
 export const examS3Item = z.object({
@@ -201,6 +202,9 @@ export const examSessionTableItem = z.object({
   userId: z.string(),
   userExamToken: z.string(),
   userAnswers: z.record(z.string(), z.string()),
+  userStatus: examStatus,
+  userScore: z.number(),
+  userIsPassed: z.boolean(),
 })
 export type ExamSessionTableItem = z.infer<typeof examSessionTableItem>
 

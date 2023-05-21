@@ -1,8 +1,8 @@
 import { PutCommand, GetCommand, DeleteCommand, UpdateCommand, UpdateCommandInput, PutCommandInput, QueryCommand } from '@aws-sdk/lib-dynamodb'
-import { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3'
+import { S3Client, PutObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3'
 import { SFNClient, StartExecutionCommand, StartExecutionCommandInput } from '@aws-sdk/client-sfn'
 import { APIGatewayProxyEventV2, Context } from 'aws-lambda'
-import { BatchGetItemCommand, DynamoDBClient } from '@aws-sdk/client-dynamodb'
+import { DynamoDBClient } from '@aws-sdk/client-dynamodb'
 import { v4 as uuidv4 } from 'uuid'
 import { sign } from 'jsonwebtoken'
 import { Readable } from 'stream'
@@ -25,6 +25,12 @@ const dynamo = new DynamoDBClient({})
 
 const sf = new SFNClient({})
 
+// This code is responsible for creating an exam. 
+// It validates the request, checks if the necessary environment variables are set, and verifies the user's authentication and authorization. 
+// It then processes the exam data, generates unique identifiers for questions and options, and stores the exam questions in an S3 bucket. 
+// The exam details are saved in a DynamoDB table, and a token is generated for finishing the exam. 
+// Finally, the code starts a background process using the token and schedules it to execute after the exam duration. 
+// If any errors occur during the process, appropriate error responses are returned.
 export const createExam = async (event: APIGatewayProxyEventV2, context: Context): Promise<ExaminatorResponse> => {
   try {
     if (!FINISH_EXAM_TOKEN_SECRET || !FINISHER_MACHINE_ARN || !ACCESS_TOKEN_SECRET) {
@@ -83,6 +89,7 @@ export const createExam = async (event: APIGatewayProxyEventV2, context: Context
         optionText: option.optionText,
         isCorrect: option.isCorrect,
       })),
+      points: 5,
     }))
 
     // set correct option id & remove isCorrect
@@ -129,7 +136,7 @@ export const createExam = async (event: APIGatewayProxyEventV2, context: Context
       questionsMetaData,
       createdAt: new Date().toUTCString(),
       createdBy: auth.userId,
-      status: examStatus.enum.normal,
+      examStatus: examStatus.enum.normal,
       isOptionsRandomized: input.isOptionsRandomized,
       isQuestionsRandomized: input.isQuestionsRandomized,
     }
@@ -175,6 +182,12 @@ export const createExam = async (event: APIGatewayProxyEventV2, context: Context
   }
 }
 
+// This code handles the process of finishing an exam. It first validates the input payload to ensure it contains the necessary data. 
+// Then, it verifies the finisher token using a secret key. The code retrieves the exam details from a DynamoDB table and the exam questions from an S3 bucket. 
+// It also retrieves the exam sessions from the database. It calculates the exam results for each session by comparing the user's answers with the correct answers. 
+// The total points and the number of correct answers are calculated for each user. 
+// The code updates the user's information in the database and the exam session status accordingly. 
+// Finally, it returns a successful response if the process completes without errors, or an appropriate error response if any errors occur.
 export const finishExam = async (payload: any): Promise<ExaminatorResponse> => {
   try {
     const _input = finisherExamInput.safeParse(payload)
@@ -187,10 +200,120 @@ export const finishExam = async (payload: any): Promise<ExaminatorResponse> => {
 
     const finishAuth = await validateFinishToken(finisherToken, FINISH_EXAM_TOKEN_SECRET)
 
-    console.log(finishAuth)
-    // **********
+    // *********
+    // get exam from database
+    // *********
 
-    // TODO evaluate exam and update exam status and announce people scores
+    const examGetDB = await dynamo.send(
+      new GetCommand({
+        TableName: examsTableName,
+        Key: {
+          examId: finishAuth.examId,
+        },
+      }),
+    )
+
+    const exam = examGetDB.Item as ExamTableItem
+
+    if (!exam) {
+      throw new Response({ statusCode: 400, message: 'Invalid Exam ID !' })
+    }
+
+    // *********
+    // get exam questions from s3
+    // *********
+
+    const s3_exam = await s3.send(
+      new GetObjectCommand({
+        Bucket: examinatorBucket,
+        Key: getExamQuestionsS3Path(finishAuth.courseId, finishAuth.examId),
+      }),
+    )
+    const examData: ExamS3Item = JSON.parse(await streamToString(s3_exam.Body as Readable))
+
+    if (!examData) {
+      throw new Response({ statusCode: 400, message: 'Invalid examData !' })
+    }
+
+    // *********
+    // get exam sessions from database
+    // *********
+
+    const _examSession = await dynamo.send(
+      new QueryCommand({
+        TableName: examSessionsTableName,
+        KeyConditionExpression: 'examId = :examId',
+        ExpressionAttributeValues: {
+          ':examId': finishAuth.examId,
+        },
+      }),
+    )
+
+    const examSessions = _examSession.Items as ExamSessionTableItem[]
+
+    if (!examSessions || examSessions.length === 0) {
+      throw new Response({ statusCode: 400, message: 'Invalid examSessions !' })
+    }
+
+    console.log('examSession', examSessions)
+
+    // *********
+    // calculate exam results for each session aka user session
+    // *********
+
+    // every userId has its own exam session
+    for (const session of examSessions) {
+      const { userId, userAnswers } = session
+      let totalPoints = 0
+      let totalCorrectAnswers = 0
+
+      for (const [questionId, userAnswer] of Object.entries(userAnswers)) {
+        const question = examData.examQuestions.find((question) => question.questionId === questionId)
+
+        if (question) {
+          const correctAnswer = question.correctOptionId
+
+          if (userAnswer === correctAnswer) {
+            totalPoints += question.points
+            totalCorrectAnswers += 1
+          }
+        }
+      }
+
+      console.log(`userId: ${userId} totalPoints: ${totalPoints} totalCorrectAnswers: ${totalCorrectAnswers}`)
+
+      const updateUserDBCommand = new UpdateCommand({
+        TableName: usersTableName,
+        Key: {
+          userId: userId,
+        },
+        UpdateExpression: 'SET exams.#k.examStatus = :examStatus, exams.#k.isPassed = :isPassed, exams.#k.score = :score',
+        ExpressionAttributeNames: {
+          '#k': finishAuth.examId,
+        },
+        ExpressionAttributeValues: {
+          ':examStatus': examStatus.enum.finished,
+          ':isPassed': totalPoints >= exam.minimumPassingScore,
+          ':score': totalPoints,
+        },
+      })
+
+      const updateExamSessionsTable = new UpdateCommand({
+        TableName: examSessionsTableName,
+        Key: {
+          examId: finishAuth.examId,
+          userId: userId,
+        },
+        UpdateExpression: 'SET userStatus = :examStatus, userIsPassed = :isPassed, userScore = :score',
+        ExpressionAttributeValues: {
+          ':examStatus': examStatus.enum.finished,
+          ':isPassed': totalPoints >= exam.minimumPassingScore,
+          ':score': totalPoints,
+        },
+      })
+
+      await Promise.all([dynamo.send(updateUserDBCommand), dynamo.send(updateExamSessionsTable)])
+    }
 
     return new Response({ statusCode: 200, body: { success: true } }).response
   } catch (error) {
@@ -199,7 +322,11 @@ export const finishExam = async (payload: any): Promise<ExaminatorResponse> => {
   }
 }
 
-// TODO dont send entire "exam" just send names 
+// This code handles the process of joining an exam. It first validates the access token and the input payload. 
+// It checks if the user is enrolled in the course related to the exam and if the exam is valid and not canceled. 
+// It retrieves the exam questions from an S3 bucket and randomizes them if required. If the user has already joined the exam, it returns the existing exam session data. 
+// Otherwise, it creates a new exam session for the user, generates a token for the session, and updates the necessary tables. 
+// Finally, it returns the token, the exam questions, and the exam details to the user.
 export const joinExam = async (event: APIGatewayProxyEventV2, context: Context): Promise<ExaminatorResponse> => {
   try {
     if (event.requestContext.http.method === 'OPTIONS') {
@@ -271,7 +398,7 @@ export const joinExam = async (event: APIGatewayProxyEventV2, context: Context):
       throw new Response({ statusCode: 400, message: `This exam is finished at ${_end.format('YYYY-MM-DD HH:mm:ss')} ! You cannot join anymore !` })
     }
 
-    if (exam.status === examStatus.enum.canceled) {
+    if (exam.examStatus === examStatus.enum.canceled) {
       throw new Response({ statusCode: 400, message: 'This exam is canceled ! You cannot join anymore !' })
     }
 
@@ -330,6 +457,7 @@ export const joinExam = async (event: APIGatewayProxyEventV2, context: Context):
     const examSession = _examSession.Item as ExamSessionTableItem
 
     if (examSession) {
+      // TODO dont send entire "exam" just send names 
       return new Response({ statusCode: 202, body: { token: examSession.userExamToken, examQuestions: examData.examQuestions, exam, userAnswers: examSession.userAnswers } }).response
     }
 
@@ -353,7 +481,9 @@ export const joinExam = async (event: APIGatewayProxyEventV2, context: Context):
         userId: auth.userId,
         userExamToken,
         userAnswers: {},
-      },
+        userScore: 0,
+        userIsPassed: false,
+      } as ExamSessionTableItem,
     })
 
     const users_exam: UsersTableItemExam = {
@@ -365,7 +495,7 @@ export const joinExam = async (event: APIGatewayProxyEventV2, context: Context):
       endDate: exam.endDate,
       duration: exam.duration,
       isCreator: false,
-      status: examStatus.enum.normal,
+      examStatus: examStatus.enum.normal,
       isPassed: false,
       score: 0,
     }
@@ -390,6 +520,7 @@ export const joinExam = async (event: APIGatewayProxyEventV2, context: Context):
 
     // **********
 
+    // TODO dont send entire "exam" just send names 
     return new Response({ statusCode: 200, body: { token: userExamToken, examQuestions: examData.examQuestions, exam } }).response
   } catch (error) {
     console.log(error)
@@ -398,6 +529,11 @@ export const joinExam = async (event: APIGatewayProxyEventV2, context: Context):
   }
 }
 
+// This code handles the submission of answers to an exam. 
+// It validates the request, checks if the exam and user session are valid, and parses the submitted answer data. 
+// It retrieves the exam details from a DynamoDB table and verifies if the exam is active and not finished or canceled. 
+// It checks if the submitted question and option are valid for the exam. If all validations pass, it updates the user's answer for the specified question in the exam session record. 
+// Finally, it returns a successful response if the submission is successful, or an appropriate error response if any issues occur during the process.
 export const submitToExam = async (event: APIGatewayProxyEventV2, context: Context): Promise<ExaminatorResponse> => {
   try {
     if (event.requestContext.http.method === 'OPTIONS') {
@@ -438,11 +574,11 @@ export const submitToExam = async (event: APIGatewayProxyEventV2, context: Conte
       throw new Response({ statusCode: 400, message: 'This exam doesnt exist !', addons: { examAuth } })
     }
 
-    if (exam.status === examStatus.enum.finished) {
+    if (exam.examStatus === examStatus.enum.finished) {
       throw new Response({ statusCode: 400, message: 'This exam is finished ! You cannot submit answers anymore !' })
     }
 
-    if (exam.status === examStatus.enum.canceled) {
+    if (exam.examStatus === examStatus.enum.canceled) {
       throw new Response({ statusCode: 400, message: 'This exam is canceled ! You cannot submit answers anymore !' })
     }
 
@@ -476,6 +612,12 @@ export const submitToExam = async (event: APIGatewayProxyEventV2, context: Conte
   }
 }
 
+
+// This code is responsible for fetching exams that are currently available for a specific user. 
+// It validates the request, retrieves the user's information from a DynamoDB table, and determines the course IDs associated with the user. 
+// It then queries the DynamoDB table for exams that match the course IDs and have not ended yet. 
+// It collects the relevant exam details, excluding unnecessary information, and returns a successful response with the retrieved exams. 
+// If any errors occur during the process, it returns an appropriate error response.
 export const getExams = async (event: APIGatewayProxyEventV2, context: Context): Promise<ExaminatorResponse> => {
   try {
     if (event.requestContext.http.method === 'OPTIONS') {
