@@ -71,7 +71,14 @@ export const joinExamInput = z.object({
   examId: z.string(),
 })
 
-
 export const finisherExamInput = z.object({
   finisherToken: z.string().min(1),
+})
+
+export const getExamsInput = z.object({
+  type: z.enum(['active', 'finished']),
+})
+
+export const getResultsInput = z.object({
+  examId: z.string(),
 })

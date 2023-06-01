@@ -10,7 +10,7 @@ import { validateExamTicketToken, validateFinishToken, validateSessionToken } fr
 import { Response, ExaminatorResponse } from '../response'
 import { examinatorBucket, examSessionsTableName, examsTableName, getExamQuestionsS3Path, nanoid, streamToString, usersTableName } from '../utils'
 import { ExamS3Item, ExamTableItem, ExamTicketTokenMetaData, ExamSessionTableItem, courses, UsersTableItem, UsersTableItemExam, examStatus, FinishExamTokenMetaData } from '../types'
-import { createExamInput, finisherExamInput, joinExamInput, submitAnswerInput } from '../models'
+import { createExamInput, finisherExamInput, getExamsInput, getResultsInput, joinExamInput, submitAnswerInput } from '../models'
 
 import dayjs from 'dayjs'
 import relativeTime from 'dayjs/plugin/relativeTime'
@@ -624,6 +624,12 @@ export const getExams = async (event: APIGatewayProxyEventV2, context: Context):
       return new Response({ statusCode: 200, body: {} }).response
     }
 
+    const _input = getExamsInput.safeParse(JSON.parse(event.body || '{}'))
+
+    if (_input.success === false) {
+      throw new Response({ statusCode: 400, message: 'Woops! It looks like you sent us the wrong data. Double-check your request and try again.', addons: { issues: _input.error.issues } })
+    }
+
     const accessToken = event.headers['access-token']
     const auth = await validateSessionToken(accessToken, ACCESS_TOKEN_SECRET)
 
@@ -642,17 +648,18 @@ export const getExams = async (event: APIGatewayProxyEventV2, context: Context):
       throw new Response({ statusCode: 404, message: 'Couldnt find any user with this id', addons: { userId: auth.userId } })
     }
 
-    const currentTime = Date.now()
     const targetCourseIds: string[] = user.courses.map((course) => course.id)
 
     const workers = []
+
+    let currentTime = Date.now()
 
     for (const courseId of targetCourseIds) {
       const command = new QueryCommand({
         TableName: examsTableName,
         IndexName: 'courseIdIndex', // name of the GSI
         KeyConditionExpression: 'courseId = :courseId',
-        FilterExpression: 'endDate >= :currentTime',
+        FilterExpression: _input.data.type === 'finished' ? 'endDate < :currentTime' : 'endDate >= :currentTime',
         ExpressionAttributeValues: {
           ':courseId': courseId,
           ':currentTime': currentTime,
@@ -673,6 +680,82 @@ export const getExams = async (event: APIGatewayProxyEventV2, context: Context):
     }
 
     return new Response({ statusCode: 200, body: { exams } }).response
+  } catch (error) {
+    console.log(error)
+    return error instanceof Response ? error.response : new Response({ statusCode: 400, message: 'Generic Examinator Error', addons: { error: error.message } }).response
+  }
+}
+
+export const getResults = async (event: APIGatewayProxyEventV2, context: Context): Promise<ExaminatorResponse> => {
+  try {
+    if (event.requestContext.http.method === 'OPTIONS') {
+      return new Response({ statusCode: 200, body: {} }).response
+    }
+
+    const _input = getResultsInput.safeParse(JSON.parse(event.body || '{}'))
+
+    if (_input.success === false) {
+      throw new Response({ statusCode: 400, message: 'Woops! It looks like you sent us the wrong data. Double-check your request and try again.', addons: { issues: _input.error.issues } })
+    }
+
+    const { examId } = _input.data
+
+    const accessToken = event.headers['access-token']
+    const auth = await validateSessionToken(accessToken, ACCESS_TOKEN_SECRET)
+
+    const examGetDB = await dynamo.send(
+      new GetCommand({
+        TableName: examsTableName,
+        Key: {
+          examId,
+        },
+      }),
+    )
+
+    const exam = examGetDB.Item as ExamTableItem
+
+    if (!exam) {
+      throw new Response({ statusCode: 400, message: 'This exam doesnt exist !', addons: { examId } })
+    }
+
+    const _examSession = await dynamo.send(
+      new QueryCommand({
+        TableName: examSessionsTableName,
+        KeyConditionExpression: 'examId = :examId',
+        ExpressionAttributeValues: {
+          ':examId': examId,
+        },
+      }),
+    )
+
+    const examSessions = _examSession.Items as ExamSessionTableItem[]
+
+    if (!examSessions || examSessions.length === 0) {
+      throw new Response({ statusCode: 400, message: 'Invalid examSessions !' })
+    }
+
+    const results = []
+
+    for (const session of examSessions) {
+      const _user = await dynamo.send(
+        new GetCommand({
+          TableName: usersTableName,
+          Key: {
+            userId: session.userId,
+          },
+        }),
+      )
+
+      const user = _user.Item as UsersTableItem
+
+      if (!user) continue
+
+      const { userId, userScore, userIsPassed } = session
+
+      results.push({ userId, userScore, userIsPassed, userFirstName: user.firstName, userLastName: user.lastName, universityPersonalId: user.universityPersonalId })
+    }
+
+    return new Response({ statusCode: 200, body: { exam, results } }).response
   } catch (error) {
     console.log(error)
     return error instanceof Response ? error.response : new Response({ statusCode: 400, message: 'Generic Examinator Error', addons: { error: error.message } }).response

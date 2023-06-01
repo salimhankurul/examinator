@@ -21,6 +21,7 @@ const joinExamLambdaName = 'JoinExam'
 const finishExamLambdaName = 'FinishExam'
 const submitToExamLambdaName = 'SubmitToExam'
 const getExamsLambdaName = 'GetExams'
+const getExamResultsLambdaName = 'GetResults'
 
 const getUserLambdaName = 'GetUser'
 const updateUserLambdaName = 'UpdateUser'
@@ -175,7 +176,7 @@ export class ExaminatorStack extends cdk.Stack {
       code: Code.fromAsset('dist'),
       handler: 'Modules/exam.finishExam',
       architecture: Architecture.ARM_64,
-      timeout: Duration.minutes(5),
+      timeout: Duration.minutes(15),
       role,
       layers: [layer],
       environment: {
@@ -386,6 +387,20 @@ export class ExaminatorStack extends cdk.Stack {
       },
     })
 
+    const getExamResultsLambda = new Function(this, getExamResultsLambdaName, {
+      functionName: getExamResultsLambdaName,
+      runtime: Runtime.NODEJS_16_X,
+      code: Code.fromAsset('dist'),
+      handler: 'Modules/exam.getResults',
+      architecture: Architecture.ARM_64,
+      timeout: Duration.minutes(15),
+      role,
+      layers: [layer],
+      environment: {
+        ACCESS_TOKEN_SECRET: 'ACCESS_TOKEN_SECRET',
+      },
+    })
+
     // *******************************
     // *******************************
     // ************* HTTP  ***********
@@ -503,6 +518,14 @@ export class ExaminatorStack extends cdk.Stack {
       httpApi,
       routeKey: HttpRouteKey.with('/GET_EXAMS', HttpMethod.ANY),
       integration: new HttpLambdaIntegration('getExamsLambdaInegration', getExamsLambda, {
+        payloadFormatVersion: PayloadFormatVersion.custom('2.0'),
+      }),
+    })
+
+    new HttpRoute(this, 'ExaminatorAPIRoutegetExamResultsLambda' + HttpMethod.ANY, {
+      httpApi,
+      routeKey: HttpRouteKey.with('/GET_RESULTS', HttpMethod.ANY),
+      integration: new HttpLambdaIntegration('getExamResultsLambdaInegration', getExamResultsLambda, {
         payloadFormatVersion: PayloadFormatVersion.custom('2.0'),
       }),
     })
