@@ -47,6 +47,7 @@ const examQuestionInput = z.object({
       isCorrect: z.boolean().optional(),
     }),
   ),
+  points: z.number(),
 })
 
 export const createExamInput = z.object({

@@ -9,7 +9,7 @@ import { Readable } from 'stream'
 import { validateExamTicketToken, validateFinishToken, validateSessionToken } from './authorization'
 import { Response, ExaminatorResponse } from '../response'
 import { examinatorBucket, examSessionsTableName, examsTableName, getExamQuestionsS3Path, nanoid, streamToString, usersTableName } from '../utils'
-import { ExamS3Item, ExamTableItem, ExamTicketTokenMetaData, ExamSessionTableItem, courses, UsersTableItem, UsersTableItemExam, examStatus, FinishExamTokenMetaData } from '../types'
+import { ExamS3Item, ExamTableItem, ExamTicketTokenMetaData, ExamSessionTableItem, courses, UsersTableItem, UsersTableItemExam, examStatus, FinishExamTokenMetaData, userExamStatus } from '../types'
 import { createExamInput, finisherExamInput, getExamsInput, getResultsInput, joinExamInput, submitAnswerInput } from '../models'
 
 import dayjs from 'dayjs'
@@ -73,6 +73,16 @@ export const createExam = async (event: APIGatewayProxyEventV2, context: Context
       throw new Response({ statusCode: 400, message: 'Invalid Course ID !' })
     }
 
+    let totalPoints = 0
+
+    for (const question of input.examQuestions) {
+      totalPoints += question.points
+    }
+
+    if (totalPoints < input.minimumPassingScore) {
+      throw new Response({ statusCode: 400, message: 'Minimum passing score is greater than total points !' })
+    }
+
     // generate exam id
     const examId: string = uuidv4()
 
@@ -84,12 +94,12 @@ export const createExam = async (event: APIGatewayProxyEventV2, context: Context
     const questions = input.examQuestions.map((question) => ({
       questionId: nanoid(10),
       questionText: question.questionText,
+      points: question.points,
       options: question.options.map((option) => ({
         optionId: nanoid(5),
         optionText: option.optionText,
         isCorrect: option.isCorrect,
       })),
-      points: 5,
     }))
 
     // set correct option id & remove isCorrect
@@ -139,6 +149,7 @@ export const createExam = async (event: APIGatewayProxyEventV2, context: Context
       examStatus: examStatus.enum.normal,
       isOptionsRandomized: input.isOptionsRandomized,
       isQuestionsRandomized: input.isQuestionsRandomized,
+      totalPoints,
     }
 
     const exams_PutCommand = new PutCommand({
@@ -282,6 +293,7 @@ export const finishExam = async (payload: any): Promise<ExaminatorResponse> => {
 
       console.log(`userId: ${userId} totalPoints: ${totalPoints} totalCorrectAnswers: ${totalCorrectAnswers}`)
 
+      const isPassed = totalPoints >= exam.minimumPassingScore
       const updateUserDBCommand = new UpdateCommand({
         TableName: usersTableName,
         Key: {
@@ -292,8 +304,8 @@ export const finishExam = async (payload: any): Promise<ExaminatorResponse> => {
           '#k': finishAuth.examId,
         },
         ExpressionAttributeValues: {
-          ':examStatus': examStatus.enum.finished,
-          ':isPassed': totalPoints >= exam.minimumPassingScore,
+          ':examStatus': isPassed ? userExamStatus.enum.passed : userExamStatus.enum.failed,
+          ':isPassed': isPassed,
           ':score': totalPoints,
         },
       })
@@ -495,9 +507,10 @@ export const joinExam = async (event: APIGatewayProxyEventV2, context: Context):
       endDate: exam.endDate,
       duration: exam.duration,
       isCreator: false,
-      examStatus: examStatus.enum.normal,
+      examStatus: userExamStatus.enum.ongoing,
       isPassed: false,
       score: 0,
+      totalPoints: exam.totalPoints,
     }
 
     const users_updateCommand = new UpdateCommand({

@@ -1,7 +1,8 @@
 import { z } from 'zod'
 
 export const userType = z.enum(['admin', 'teacher', 'student'])
-export const examStatus = z.enum(['normal', 'canceled', 'finished'])
+export const examStatus = z.enum(['finished', 'canceled', 'normal'])
+export const userExamStatus = z.enum(['ongoing', 'passed', 'failed'])
 // **********  Courses  **********
 // **********  Courses  **********
 // **********  Courses  **********
@@ -96,10 +97,11 @@ export const userExam = z.object({
   startDate: z.number(),
   endDate: z.number(),
   duration: z.number(), // in minutes
+  totalPoints: z.number(),
   score: z.number(),
   isCreator: z.boolean(), // when true, the user is teacher who created the exam
   isPassed: z.boolean(),
-  examStatus: examStatus,
+  examStatus: userExamStatus,
 })
 export type UsersTableItemExam = z.infer<typeof userExam>
 
@@ -167,6 +169,7 @@ export const examTableItem = z.object({
   examStatus: examStatus,
   isOptionsRandomized: z.boolean(),
   isQuestionsRandomized: z.boolean(),
+  totalPoints: z.number(),
 })
 export type ExamTableItem = z.infer<typeof examTableItem>
 
